@@ -1,0 +1,33 @@
+{
+  "name": "hmee-lek-scene-builder",
+  "version": "0.1.0",
+  "description": "Project-local Cocos Creator editor tools for Hmee Lek Mini World scene assembly.",
+  "author": "Hmee Lek Mini World",
+  "main": "./dist/main.js",
+  "editor": ">=3.8.8",
+  "scripts": {
+    "build": "tsc -p ./tsconfig.json"
+  },
+  "devDependencies": {
+    "typescript": "^5.4.5"
+  },
+  "contributions": {
+    "menu": [
+      {
+        "path": "Hmee Lek Tools",
+        "label": "Build Bubble Stage Select",
+        "message": "build-bubble-stage-select"
+      }
+    ],
+    "messages": {
+      "build-bubble-stage-select": {
+        "methods": [
+          "buildBubbleStageSelect"
+        ]
+      }
+    },
+    "scene": {
+      "script": "./dist/scene.js"
+    }
+  }
+}
