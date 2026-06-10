@@ -1,24 +1,27 @@
 
-#///////////////////////////
-# Cocos Creator 3D Project
-#///////////////////////////
+# Cocos Creator generated data
 library/
 temp/
 local/
 build/
 profiles/
-native
-#//////////////////////////
-# NPM
-#//////////////////////////
+native/
+
+# Dependencies
 node_modules/
 
-#//////////////////////////
-# VSCode
-#//////////////////////////
-.vscode/
+# Logs and local environment files
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.env
+.env.*
 
-#//////////////////////////
-# WebStorm
-#//////////////////////////
+# OS files
+.DS_Store
+Thumbs.db
+
+# Editor folders
+.vscode/
 .idea/
