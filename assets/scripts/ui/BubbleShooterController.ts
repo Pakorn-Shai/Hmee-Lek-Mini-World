@@ -24,8 +24,8 @@ const DESIGN_HEIGHT = 3200;
 const RESOURCE_ROOT = 'bubble-shooter';
 const TEST_SCORE_PROGRESS = 0.4;
 const STAR_THRESHOLDS = [0.33, 0.66, 1.0];
-const CURRENT_PEARL_FINAL_SIZE = 80;
-const NEXT_PEARL_FINAL_SIZE = 38;
+const CURRENT_PEARL_FINAL_SIZE = 96;
+const NEXT_PEARL_FINAL_SIZE = 88;
 
 @ccclass('BubbleShooterController')
 export class BubbleShooterController extends Component {
@@ -196,8 +196,9 @@ export class BubbleShooterController extends Component {
     nextPearl.setPosition(-292, -54);
     this.setSize(nextPearl, NEXT_PEARL_FINAL_SIZE, NEXT_PEARL_FINAL_SIZE);
     this.drawCircle(nextPearl, NEXT_PEARL_FINAL_SIZE / 2, new Color(255, 119, 185, 255));
-    this.loadSpriteFrame('pearl_pink', (spriteFrame) => {
+    this.loadSpriteFrame('pearl_gold', (spriteFrame) => {
       this.setPearlSprite(nextPearl, spriteFrame, NEXT_PEARL_FINAL_SIZE);
+      this.logPearlNodeDebug(nextPearl);
     });
 
     const hmeeLek = this.createNode('HmeeLek', this.shooterArea);
@@ -213,8 +214,9 @@ export class BubbleShooterController extends Component {
     currentPearl.setPosition(0, -142);
     this.setSize(currentPearl, CURRENT_PEARL_FINAL_SIZE, CURRENT_PEARL_FINAL_SIZE);
     this.drawCircle(currentPearl, CURRENT_PEARL_FINAL_SIZE / 2, new Color(65, 162, 255, 255));
-    this.loadSpriteFrame('pearl_blue', (spriteFrame) => {
+    this.loadSpriteFrame('pearl_purple', (spriteFrame) => {
       this.setPearlSprite(currentPearl, spriteFrame, CURRENT_PEARL_FINAL_SIZE);
+      this.logPearlNodeDebug(currentPearl);
     });
 
     console.log('[BubbleShooter] setupShooterArea complete');
@@ -380,6 +382,20 @@ export class BubbleShooterController extends Component {
     this.setSize(node, finalSize, finalSize);
     this.setSprite(node, spriteFrame);
     console.log(`[BubbleShooter] ${node.name} sprite applied: final=${finalSize}x${finalSize}, scale=1`);
+  }
+
+  private logPearlNodeDebug(node: Node): void {
+    const transform = node.getComponent(UITransform);
+    const position = node.position;
+    const scale = node.scale;
+    console.log(`[BubbleShooter] ${node.name} debug`, {
+      active: node.active,
+      parentName: node.parent?.name ?? null,
+      position: { x: position.x, y: position.y, z: position.z },
+      scale: { x: scale.x, y: scale.y, z: scale.z },
+      contentSize: transform ? { width: transform.width, height: transform.height } : null,
+      siblingIndex: node.getSiblingIndex(),
+    });
   }
 
   private createSpriteVisual(nodeName: string, parent: Node, width: number, height: number, spriteFrame: SpriteFrame): Sprite {
