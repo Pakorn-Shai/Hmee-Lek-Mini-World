@@ -24,11 +24,6 @@ const DESIGN_HEIGHT = 3200;
 const RESOURCE_ROOT = 'bubble-shooter';
 const TEST_SCORE_PROGRESS = 0.4;
 const STAR_THRESHOLDS = [0.33, 0.66, 1.0];
-const PEARL_ASSET_SOURCE_SIZE = 256;
-const BOARD_PEARL_FINAL_SIZE = 80;
-const BOARD_PEARL_SPACING_X = 86;
-const BOARD_PEARL_SPACING_Y = 72;
-const BOARD_ROWS = [6, 5, 6, 5];
 const CURRENT_PEARL_FINAL_SIZE = 80;
 const NEXT_PEARL_FINAL_SIZE = 38;
 
@@ -36,7 +31,7 @@ const NEXT_PEARL_FINAL_SIZE = 38;
 export class BubbleShooterController extends Component {
   private safeArea!: Node;
   private topHud!: Node;
-  private pearlBoard!: Node;
+  private pearlBoard?: Node;
   private shooterArea!: Node;
   private bottomHud!: Node;
   private backButton!: Node;
@@ -61,7 +56,7 @@ export class BubbleShooterController extends Component {
     this.setupSafeArea();
     this.setupTopHUD();
     this.setupScoreBar();
-    this.setupPearlBoardPreview();
+    this.bindScenePearlBoard();
     this.setupShooterArea();
     this.setupBottomHUD();
     this.applyLayoutZOrder();
@@ -101,8 +96,6 @@ export class BubbleShooterController extends Component {
       'ComingSoonLabel',
       'BackButton',
       'PauseButton',
-      'PearlBoard',
-      'PearlBoardController',
       'ShooterArea',
       'BottomHUD',
     ];
@@ -177,82 +170,14 @@ export class BubbleShooterController extends Component {
     console.log('[BubbleShooter] setupScoreBar complete');
   }
 
-  private setupPearlBoardPreview(): void {
-    this.pearlBoard = this.createNode('PearlBoard', this.node);
+  private bindScenePearlBoard(): void {
+    this.pearlBoard = this.node.getChildByName('PearlBoard') ?? undefined;
+    if (!this.pearlBoard) {
+      console.warn('[BubbleShooterController] PearlBoard is not found in the scene.');
+      return;
+    }
+
     this.pearlBoard.active = true;
-    // Keep the board in the open play area and outside the SafeArea widget.
-    // Parenting it directly to Canvas avoids a late widget resize moving it out
-    // of view on tall mobile previews.
-    const boardY = Math.max(260, Math.min(620, this.canvasHeight * 0.18));
-    this.pearlBoard.setPosition(0, boardY);
-    this.pearlBoard.setScale(1, 1, 1);
-    this.setSize(this.pearlBoard, 620, 360);
-
-    const boardDebugBackground = this.createNode('PearlBoardDebugBackground', this.pearlBoard);
-    boardDebugBackground.setPosition(0, 0);
-    this.setSize(boardDebugBackground, 620, 360);
-    this.drawRoundedRect(boardDebugBackground, 620, 360, new Color(255, 255, 255, 35), 42);
-
-    const previewContainer = this.createNode('PearlPreviewContainer', this.pearlBoard);
-    previewContainer.setPosition(0, 0);
-    previewContainer.active = true;
-    previewContainer.setScale(1, 1, 1);
-    this.setSize(previewContainer, 560, 300);
-
-    const pearlAssets = ['pearl_blue', 'pearl_pink', 'pearl_green', 'pearl_gold', 'pearl_purple', 'pearl_milk'];
-    const fallbackColors = [
-      new Color(65, 162, 255, 255),
-      new Color(255, 119, 185, 255),
-      new Color(94, 211, 124, 255),
-      new Color(255, 203, 80, 255),
-      new Color(164, 116, 255, 255),
-      new Color(246, 239, 213, 255),
-    ];
-
-    console.log(
-      `[BubbleShooter] PearlBoard config: asset=${PEARL_ASSET_SOURCE_SIZE}x${PEARL_ASSET_SOURCE_SIZE}, ` +
-        `final=${BOARD_PEARL_FINAL_SIZE}x${BOARD_PEARL_FINAL_SIZE}, ` +
-        `spacing=${BOARD_PEARL_SPACING_X}x${BOARD_PEARL_SPACING_Y}, rows=${BOARD_ROWS.join('-')}`,
-    );
-    console.log('[PearlBoard] node active:', this.pearlBoard.active);
-    console.log('[PearlBoard] position:', this.pearlBoard.position);
-    console.log('[PearlBoard] scale:', this.pearlBoard.scale);
-    console.log('[PearlBoard] size:', this.pearlBoard.getComponent(UITransform)?.contentSize);
-    console.log('[PearlBoard] parent:', this.pearlBoard.parent?.name);
-
-    const boardFallbackGraphics = this.pearlBoard.getComponent(Graphics) ?? this.pearlBoard.addComponent(Graphics);
-    boardFallbackGraphics.clear();
-
-    // Static debug preview only. One pearl is exactly one visible node.
-    BOARD_ROWS.forEach((count, rowIndex) => {
-      const rowWidth = (count - 1) * BOARD_PEARL_SPACING_X;
-      const offsetX = rowIndex % 2 === 0 ? BOARD_PEARL_SPACING_X / 2 : 0;
-      const y = 112 - rowIndex * BOARD_PEARL_SPACING_Y;
-
-      for (let column = 0; column < count; column += 1) {
-        const assetIndex = (rowIndex + column) % pearlAssets.length;
-        const x = -rowWidth / 2 + column * BOARD_PEARL_SPACING_X + offsetX;
-        boardFallbackGraphics.fillColor = fallbackColors[assetIndex];
-        boardFallbackGraphics.circle(x, y, BOARD_PEARL_FINAL_SIZE / 2);
-        boardFallbackGraphics.fill();
-
-        const pearl = this.createNode(`PreviewPearl_r${rowIndex}_c${column}`, previewContainer);
-        pearl.setPosition(x, y);
-        pearl.setScale(1, 1, 1);
-        this.setSize(pearl, BOARD_PEARL_FINAL_SIZE, BOARD_PEARL_FINAL_SIZE);
-        this.drawCircle(pearl, BOARD_PEARL_FINAL_SIZE / 2, fallbackColors[assetIndex]);
-        console.log(
-          `[BubbleShooter] Board pearl r${rowIndex} c${column}: nodeSize=${BOARD_PEARL_FINAL_SIZE}x${BOARD_PEARL_FINAL_SIZE}, scale=1`,
-        );
-        this.loadSpriteFrame(pearlAssets[assetIndex], (spriteFrame) => {
-          this.setPearlSprite(pearl, spriteFrame, BOARD_PEARL_FINAL_SIZE);
-        });
-      }
-    });
-
-    console.log('[PearlBoard] child count:', this.pearlBoard.children.length);
-    console.log('[PearlBoard] pearl node count:', previewContainer.children.length);
-    console.log('[BubbleShooter] setupPearlBoardPreview complete');
   }
 
   private setupShooterArea(): void {
@@ -454,10 +379,7 @@ export class BubbleShooterController extends Component {
     node.setScale(1, 1, 1);
     this.setSize(node, finalSize, finalSize);
     this.setSprite(node, spriteFrame);
-    console.log(
-      `[BubbleShooter] ${node.name} sprite applied: source=${PEARL_ASSET_SOURCE_SIZE}x${PEARL_ASSET_SOURCE_SIZE}, ` +
-        `final=${finalSize}x${finalSize}, scale=1`,
-    );
+    console.log(`[BubbleShooter] ${node.name} sprite applied: final=${finalSize}x${finalSize}, scale=1`);
   }
 
   private createSpriteVisual(nodeName: string, parent: Node, width: number, height: number, spriteFrame: SpriteFrame): Sprite {
