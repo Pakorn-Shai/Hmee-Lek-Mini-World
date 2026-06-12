@@ -24,8 +24,8 @@ const DESIGN_HEIGHT = 3200;
 const RESOURCE_ROOT = 'bubble-shooter';
 const TEST_SCORE_PROGRESS = 0.4;
 const STAR_THRESHOLDS = [0.33, 0.66, 1.0];
-const CURRENT_PEARL_FINAL_SIZE = 96;
-const NEXT_PEARL_FINAL_SIZE = 88;
+const CURRENT_PEARL_FINAL_SIZE = 118;
+const NEXT_PEARL_FINAL_SIZE = 108;
 
 @ccclass('BubbleShooterController')
 export class BubbleShooterController extends Component {
@@ -186,24 +186,28 @@ export class BubbleShooterController extends Component {
     this.setSize(this.shooterArea, DESIGN_WIDTH, 780);
 
     const shooterBase = this.createNode('ShooterAreaBase', this.shooterArea);
-    shooterBase.setPosition(0, -194);
-    this.setSize(shooterBase, 600, 210);
-    this.drawRoundedRect(shooterBase, 600, 210, new Color(21, 89, 125, 70), 80);
+    shooterBase.setPosition(0, -218);
+    this.setSize(shooterBase, 520, 170);
+    this.drawRoundedRect(shooterBase, 520, 170, new Color(21, 89, 125, 48), 72);
 
-    this.createLabel('NextPearlLabel', this.shooterArea, 'Next', -392, -52, 32, new Color(255, 255, 255, 245), 150, 52);
+    this.createLabel('NextPearlLabel', this.shooterArea, 'Next', -360, -104, 30, new Color(255, 255, 255, 245), 140, 48);
 
     const nextPearl = this.createNode('NextPearl', this.shooterArea);
-    nextPearl.setPosition(-292, -54);
+    nextPearl.setPosition(-270, -104);
     this.setSize(nextPearl, NEXT_PEARL_FINAL_SIZE, NEXT_PEARL_FINAL_SIZE);
-    this.drawCircle(nextPearl, NEXT_PEARL_FINAL_SIZE / 2, new Color(255, 119, 185, 255));
-    this.loadSpriteFrame('pearl_gold', (spriteFrame) => {
-      this.setPearlSprite(nextPearl, spriteFrame, NEXT_PEARL_FINAL_SIZE);
-      this.logPearlNodeDebug(nextPearl);
-    });
+    this.logPearlNodeDebug(nextPearl);
+    this.createPearlRender(
+      nextPearl,
+      'NextPearlVisual',
+      'NextPearlFallback',
+      NEXT_PEARL_FINAL_SIZE,
+      'pearl_gold',
+      new Color(255, 206, 75, 255),
+    );
 
     const hmeeLek = this.createNode('HmeeLek', this.shooterArea);
-    hmeeLek.setPosition(0, -236);
-    this.setSize(hmeeLek, 340, 340);
+    hmeeLek.setPosition(0, -218);
+    this.setSize(hmeeLek, 310, 310);
     this.createLabel('HmeeLekPlaceholderLabel', hmeeLek, 'Hmee Lek', 0, 0, 48, new Color(33, 91, 124, 255), 340, 100);
     this.loadSpriteFrame('hmee_lek_hold_pearl', (spriteFrame) => {
       hmeeLek.removeAllChildren();
@@ -211,13 +215,17 @@ export class BubbleShooterController extends Component {
     });
 
     const currentPearl = this.createNode('CurrentPearl', this.shooterArea);
-    currentPearl.setPosition(0, -142);
+    currentPearl.setPosition(0, -296);
     this.setSize(currentPearl, CURRENT_PEARL_FINAL_SIZE, CURRENT_PEARL_FINAL_SIZE);
-    this.drawCircle(currentPearl, CURRENT_PEARL_FINAL_SIZE / 2, new Color(65, 162, 255, 255));
-    this.loadSpriteFrame('pearl_purple', (spriteFrame) => {
-      this.setPearlSprite(currentPearl, spriteFrame, CURRENT_PEARL_FINAL_SIZE);
-      this.logPearlNodeDebug(currentPearl);
-    });
+    this.logPearlNodeDebug(currentPearl);
+    this.createPearlRender(
+      currentPearl,
+      'CurrentPearlVisual',
+      'CurrentPearlFallback',
+      CURRENT_PEARL_FINAL_SIZE,
+      'pearl_purple',
+      new Color(168, 99, 255, 255),
+    );
 
     console.log('[BubbleShooter] setupShooterArea complete');
   }
@@ -376,12 +384,37 @@ export class BubbleShooterController extends Component {
     sprite.type = Sprite.Type.SIMPLE;
   }
 
-  private setPearlSprite(node: Node, spriteFrame: SpriteFrame, finalSize: number): void {
-    node.removeAllChildren();
-    node.setScale(1, 1, 1);
-    this.setSize(node, finalSize, finalSize);
-    this.setSprite(node, spriteFrame);
-    console.log(`[BubbleShooter] ${node.name} sprite applied: final=${finalSize}x${finalSize}, scale=1`);
+  private createPearlRender(
+    container: Node,
+    visualName: string,
+    fallbackName: string,
+    visualSize: number,
+    assetName: string,
+    fallbackColor: Color,
+  ): void {
+    const fallback = this.createNode(fallbackName, container);
+    fallback.setPosition(Vec3.ZERO);
+    this.setSize(fallback, visualSize, visualSize);
+    this.drawCircle(fallback, visualSize / 2, fallbackColor);
+
+    const visual = this.createNode(visualName, container);
+    visual.setPosition(Vec3.ZERO);
+    this.setSize(visual, visualSize, visualSize);
+
+    const sprite = visual.addComponent(Sprite);
+    sprite.sizeMode = Sprite.SizeMode.CUSTOM;
+    sprite.type = Sprite.Type.SIMPLE;
+
+    const resourcePath = `${RESOURCE_ROOT}/${assetName}/spriteFrame`;
+    this.loadSpriteFrame(assetName, (spriteFrame) => {
+      sprite.spriteFrame = spriteFrame;
+      fallback.active = false;
+      console.log(`[BubbleShooter] ${visualName} SpriteFrame loaded: ${resourcePath}`, {
+        visualSize: { width: visualSize, height: visualSize },
+        fallbackActive: fallback.active,
+      });
+      this.logPearlNodeDebug(visual);
+    });
   }
 
   private logPearlNodeDebug(node: Node): void {
@@ -411,9 +444,10 @@ export class BubbleShooterController extends Component {
   }
 
   private loadSpriteFrame(assetName: string, onLoaded: (spriteFrame: SpriteFrame) => void): void {
-    resources.load(`${RESOURCE_ROOT}/${assetName}/spriteFrame`, SpriteFrame, (error, spriteFrame) => {
+    const resourcePath = `${RESOURCE_ROOT}/${assetName}/spriteFrame`;
+    resources.load(resourcePath, SpriteFrame, (error, spriteFrame) => {
       if (error || !spriteFrame) {
-        console.warn(`[BubbleShooterController] SpriteFrame not found: ${RESOURCE_ROOT}/${assetName}/spriteFrame`);
+        console.error(`[BubbleShooterController] SpriteFrame not found: ${resourcePath}`, error);
         return;
       }
 
