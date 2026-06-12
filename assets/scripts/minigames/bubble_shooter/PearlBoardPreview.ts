@@ -10,8 +10,8 @@ export class BubblePearlBoardPreview extends Component {
   @property(Node)
   public pearlParent: Node | null = null;
 
-  private readonly horizontalSpacing = 118;
-  private readonly verticalSpacing = 102;
+  private readonly horizontalSpacing = 166;
+  private readonly verticalSpacing = 144;
   private readonly rowCounts = [6, 5, 6, 5];
 
   protected start(): void {
