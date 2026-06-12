@@ -24,8 +24,8 @@ const DESIGN_HEIGHT = 3200;
 const RESOURCE_ROOT = 'bubble-shooter';
 const TEST_SCORE_PROGRESS = 0.4;
 const STAR_THRESHOLDS = [0.33, 0.66, 1.0];
-const CURRENT_PEARL_FINAL_SIZE = 118;
-const NEXT_PEARL_FINAL_SIZE = 108;
+const CURRENT_PEARL_FINAL_SIZE = 150;
+const NEXT_PEARL_FINAL_SIZE = 126;
 
 @ccclass('BubbleShooterController')
 export class BubbleShooterController extends Component {
@@ -190,10 +190,19 @@ export class BubbleShooterController extends Component {
     this.setSize(shooterBase, 520, 170);
     this.drawRoundedRect(shooterBase, 520, 170, new Color(21, 89, 125, 48), 72);
 
-    this.createLabel('NextPearlLabel', this.shooterArea, 'Next', -360, -104, 30, new Color(255, 255, 255, 245), 140, 48);
+    const nextPearlGroup = this.createNode('NextPearlGroup', this.shooterArea);
+    nextPearlGroup.setPosition(-325, -185);
+    this.setSize(nextPearlGroup, 190, 210);
 
-    const nextPearl = this.createNode('NextPearl', this.shooterArea);
-    nextPearl.setPosition(-270, -104);
+    const nextPearlBackground = this.createNode('NextPearlBackground', nextPearlGroup);
+    nextPearlBackground.setPosition(Vec3.ZERO);
+    this.setSize(nextPearlBackground, 190, 210);
+    this.drawRoundedRect(nextPearlBackground, 190, 210, new Color(21, 89, 125, 70), 42);
+
+    this.createLabel('NextPearlLabel', nextPearlGroup, 'Next', 0, 88, 30, new Color(255, 255, 255, 245), 140, 48);
+
+    const nextPearl = this.createNode('NextPearl', nextPearlGroup);
+    nextPearl.setPosition(0, 0);
     this.setSize(nextPearl, NEXT_PEARL_FINAL_SIZE, NEXT_PEARL_FINAL_SIZE);
     this.logPearlNodeDebug(nextPearl);
     this.createPearlRender(
@@ -206,16 +215,16 @@ export class BubbleShooterController extends Component {
     );
 
     const hmeeLek = this.createNode('HmeeLek', this.shooterArea);
-    hmeeLek.setPosition(0, -218);
-    this.setSize(hmeeLek, 310, 310);
+    hmeeLek.setPosition(0, -250);
+    this.setSize(hmeeLek, 380, 640);
     this.createLabel('HmeeLekPlaceholderLabel', hmeeLek, 'Hmee Lek', 0, 0, 48, new Color(33, 91, 124, 255), 340, 100);
-    this.loadSpriteFrame('hmee_lek_hold_pearl', (spriteFrame) => {
+    this.loadSpriteFrame('hmee_lek_shooter_empty', (spriteFrame) => {
       hmeeLek.removeAllChildren();
       this.setSprite(hmeeLek, spriteFrame);
     });
 
     const currentPearl = this.createNode('CurrentPearl', this.shooterArea);
-    currentPearl.setPosition(0, -296);
+    currentPearl.setPosition(0, -305);
     this.setSize(currentPearl, CURRENT_PEARL_FINAL_SIZE, CURRENT_PEARL_FINAL_SIZE);
     this.logPearlNodeDebug(currentPearl);
     this.createPearlRender(
@@ -232,7 +241,7 @@ export class BubbleShooterController extends Component {
 
   private setupBottomHUD(): void {
     this.bottomHud = this.createNode('BottomHUD', this.safeArea);
-    this.bottomHud.setPosition(0, -this.canvasHeight / 2 + 740);
+    this.bottomHud.setPosition(0, -this.canvasHeight / 2 + 860);
     this.setSize(this.bottomHud, DESIGN_WIDTH, 150);
     this.createBar('ShotsRemainingBackground', this.bottomHud, 0, 0, 480, 64, new Color(30, 93, 130, 135), 28);
     const maxShots = this.currentStageConfig?.maxShots ?? 25;
@@ -252,13 +261,18 @@ export class BubbleShooterController extends Component {
     const shooterBase = this.shooterArea.getChildByName('ShooterAreaBase');
     const hmeeLek = this.shooterArea.getChildByName('HmeeLek');
     const currentPearl = this.shooterArea.getChildByName('CurrentPearl');
-    const nextPearl = this.shooterArea.getChildByName('NextPearl');
-    const nextPearlLabel = this.shooterArea.getChildByName('NextPearlLabel');
+    const nextPearlGroup = this.shooterArea.getChildByName('NextPearlGroup');
     shooterBase?.setSiblingIndex(0);
     hmeeLek?.setSiblingIndex(1);
     currentPearl?.setSiblingIndex(2);
-    nextPearl?.setSiblingIndex(3);
-    nextPearlLabel?.setSiblingIndex(4);
+    nextPearlGroup?.setSiblingIndex(3);
+
+    const nextPearlBackground = nextPearlGroup?.getChildByName('NextPearlBackground');
+    const nextPearl = nextPearlGroup?.getChildByName('NextPearl');
+    const nextPearlLabel = nextPearlGroup?.getChildByName('NextPearlLabel');
+    nextPearlBackground?.setSiblingIndex(0);
+    nextPearl?.setSiblingIndex(1);
+    nextPearlLabel?.setSiblingIndex(2);
   }
 
   private ensurePearlBoardVisible(): void {
@@ -378,10 +392,14 @@ export class BubbleShooterController extends Component {
       graphics.clear();
     }
 
+    const transform = node.getComponent(UITransform) ?? node.addComponent(UITransform);
+    const width = transform.width;
+    const height = transform.height;
     const sprite = node.getComponent(Sprite) ?? node.addComponent(Sprite);
-    sprite.spriteFrame = spriteFrame;
     sprite.sizeMode = Sprite.SizeMode.CUSTOM;
     sprite.type = Sprite.Type.SIMPLE;
+    sprite.spriteFrame = spriteFrame;
+    transform.setContentSize(width, height);
   }
 
   private createPearlRender(
