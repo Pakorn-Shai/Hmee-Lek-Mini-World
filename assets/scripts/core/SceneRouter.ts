@@ -5,7 +5,7 @@ export enum AppScene {
   Title = 'Title',
   MainMenu = 'MainMenu',
   StageSelect = 'StageSelect',
-  BubbleShooterGame = 'BubbleShooterGame',
+  BubbleShooter = 'BubbleShooter',
 }
 
 export type SceneName = `${AppScene}`;
@@ -31,7 +31,8 @@ export class SceneRouter {
     this.loadScene(AppScene.StageSelect);
   }
 
-  public static loadBubbleShooterGame(): void {
-    this.loadScene(AppScene.BubbleShooterGame);
+  public static loadBubbleShooter(): void {
+    this.loadScene(AppScene.BubbleShooter);
   }
+
 }

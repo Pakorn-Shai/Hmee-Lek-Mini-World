@@ -85,6 +85,9 @@
       },
       {
         "__id__": 95
+      },
+      {
+        "__id__": 105
       }
     ],
     "_prefab": null,
@@ -295,7 +298,7 @@
       "z": 1
     },
     "_mobility": 0,
-    "_layer": 1073741824,
+    "_layer": 33554432,
     "_euler": {
       "__type__": "cc.Vec3",
       "x": 0,
@@ -4126,5 +4129,17 @@
   {
     "__type__": "cc.PostSettingsInfo",
     "_toneMappingType": 0
+  },
+  {
+    "__type__": "f6b68xYWQhM+aK03MOkal89",
+    "_name": "",
+    "_objFlags": 0,
+    "__editorExtras__": {},
+    "node": {
+      "__id__": 2
+    },
+    "_enabled": true,
+    "__prefab": null,
+    "_id": "42nUPgsHlDxZBRhoCHr6rJ"
   }
 ]
