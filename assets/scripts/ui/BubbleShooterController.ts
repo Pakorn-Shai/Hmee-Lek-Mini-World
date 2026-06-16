@@ -21,6 +21,7 @@ import {
   Widget,
 } from 'cc';
 import { BubbleStageConfig, BubbleStageSelection, getBubbleStageConfig } from '../data/BubbleStageData';
+import { SaveManager } from '../core/SaveManager';
 import { BubblePearl } from '../minigames/bubble_shooter/BubblePearl';
 import { BubblePearlBoardPreview } from '../minigames/bubble_shooter/PearlBoardPreview';
 import {
@@ -35,7 +36,6 @@ const { ccclass, property } = _decorator;
 const DESIGN_WIDTH = 1440;
 const DESIGN_HEIGHT = 3200;
 const RESOURCE_ROOT = 'bubble-shooter';
-const STAR_THRESHOLDS = [0.33, 0.66, 1.0];
 const CURRENT_PEARL_FINAL_SIZE = 154;
 const NEXT_PEARL_FINAL_SIZE = 118;
 const AIM_DOT_COUNT = 28;
@@ -81,6 +81,9 @@ export class BubbleShooterController extends Component {
   private resultPanel?: Node;
   private resultTitleLabel?: Label;
   private resultScoreLabel?: Label;
+  private resultBestScoreLabel?: Label;
+  private resultStarsLabel?: Label;
+  private resultNextButton?: Node;
   private readonly scoreBarWidth = 820;
   private readonly scoreBarHeight = 54;
   private scoreStarNodes: Node[] = [];
@@ -183,8 +186,11 @@ export class BubbleShooterController extends Component {
       allowedColors: [PearlColor.Blue, PearlColor.Pink, PearlColor.Green],
       clearTarget: 12,
       moveLimit: 25,
-      scorePerPearl: 10,
-      floatingBonus: 5,
+      scorePerPearl: 100,
+      floatingBonus: 150,
+      remainingShotBonus: 500,
+      clearBonus: 1000,
+      starScoreThresholds: [1500, 3000, 5000],
       targetPearls: 12,
       maxShots: 25,
       unlocked: true,
@@ -272,7 +278,7 @@ export class BubbleShooterController extends Component {
     this.scoreFill.setSiblingIndex(1);
 
     this.scoreStarNodes = [];
-    STAR_THRESHOLDS.forEach((threshold, index) => {
+    this.getStarScoreProgressThresholds().forEach((threshold, index) => {
       const x = -this.scoreBarWidth / 2 + this.scoreBarWidth * threshold;
       const star = this.createNode(`Star${index + 1}`, scoreSection);
       star.setPosition(x, 8);
@@ -404,17 +410,21 @@ export class BubbleShooterController extends Component {
   private setupResultPanel(): void {
     this.resultPanel = this.createNode('ResultPanel', this.node);
     this.resultPanel.setPosition(Vec3.ZERO);
-    this.setSize(this.resultPanel, 760, 540);
-    this.drawRoundedRect(this.resultPanel, 760, 540, new Color(20, 83, 120, 238), 42);
+    this.setSize(this.resultPanel, 920, 700);
+    this.drawRoundedRect(this.resultPanel, 920, 700, new Color(20, 83, 120, 238), 42);
 
-    this.resultTitleLabel = this.createLabel('ResultTitleLabel', this.resultPanel, 'WIN', 0, 130, 84, new Color(255, 255, 255, 255), 560, 120);
-    this.resultScoreLabel = this.createLabel('ResultScoreLabel', this.resultPanel, 'Score 0', 0, 30, 44, new Color(255, 235, 123, 255), 520, 80);
+    this.resultTitleLabel = this.createLabel('ResultTitleLabel', this.resultPanel, 'WIN', 0, 235, 84, new Color(255, 255, 255, 255), 620, 120);
+    this.resultStarsLabel = this.createLabel('ResultStarsLabel', this.resultPanel, '☆☆☆', 0, 130, 74, new Color(255, 241, 120, 255), 520, 100);
+    this.resultScoreLabel = this.createLabel('ResultScoreLabel', this.resultPanel, 'Score 0', 0, 45, 44, new Color(255, 235, 123, 255), 620, 80);
+    this.resultBestScoreLabel = this.createLabel('ResultBestScoreLabel', this.resultPanel, 'Best Score 0', 0, -25, 38, new Color(255, 255, 255, 230), 620, 70);
 
-    const retryButton = this.createResultButton('RetryButton', this.resultPanel, -170, -145, 'Retry');
-    const stageButton = this.createResultButton('ResultStageSelectButton', this.resultPanel, 170, -145, 'Stage');
+    const retryButton = this.createResultButton('RetryButton', this.resultPanel, -280, -235, 'Retry');
+    const stageButton = this.createResultButton('ResultStageSelectButton', this.resultPanel, 0, -235, 'Stage Select');
+    this.resultNextButton = this.createResultButton('NextStageButton', this.resultPanel, 280, -235, 'Next Stage');
 
     retryButton.on(Button.EventType.CLICK, this.retryStage, this);
     stageButton.on(Button.EventType.CLICK, this.backToStageSelect, this);
+    this.resultNextButton.on(Button.EventType.CLICK, this.openNextStage, this);
     this.resultPanel.active = false;
   }
 
@@ -456,18 +466,19 @@ export class BubbleShooterController extends Component {
     this.pearlBoard.setSiblingIndex(this.node.children.length - 1);
   }
 
-  public updateScoreProgress(progress: number): void {
-    const normalizedProgress = Math.max(0, Math.min(progress, 1));
+  public updateScoreProgress(score: number): void {
+    const normalizedProgress = this.getScoreProgress(score);
     const fillWidth = this.scoreBarWidth * normalizedProgress;
     this.scoreFill.setPosition(-this.scoreBarWidth / 2 + fillWidth / 2, 0);
     this.setSize(this.scoreFill, fillWidth, this.scoreBarHeight);
     this.drawRoundedRect(this.scoreFill, fillWidth, this.scoreBarHeight, new Color(255, 222, 91, 245), 27);
-    this.updateStars(normalizedProgress);
+    this.updateStars(score);
   }
 
-  public updateStars(progress: number): void {
+  public updateStars(score: number): void {
+    const thresholds = this.getResolvedStageConfig().starScoreThresholds;
     this.scoreStarNodes.forEach((star, index) => {
-      const isFilled = progress >= STAR_THRESHOLDS[index];
+      const isFilled = score >= thresholds[index];
       star.removeAllChildren();
       this.createLabel(
         `Star${index + 1}FallbackLabel`,
@@ -487,6 +498,27 @@ export class BubbleShooterController extends Component {
     });
   }
 
+  private getScoreProgress(score: number): number {
+    const maxScore = Math.max(1, this.getResolvedStageConfig().starScoreThresholds[2]);
+    return Math.max(0, Math.min(score / maxScore, 1));
+  }
+
+  private getStarScoreProgressThresholds(): number[] {
+    const thresholds = this.getResolvedStageConfig().starScoreThresholds;
+    const maxScore = Math.max(1, thresholds[2]);
+    return thresholds.map((threshold) => Math.max(0, Math.min(threshold / maxScore, 1)));
+  }
+
+  private getEarnedStars(score = this.score): number {
+    const thresholds = this.getResolvedStageConfig().starScoreThresholds;
+    return thresholds.reduce((starCount, threshold) => score >= threshold ? starCount + 1 : starCount, 0);
+  }
+
+  private formatStars(stars: number): string {
+    const filledStars = Math.max(0, Math.min(stars, 3));
+    return `${'★'.repeat(filledStars)}${'☆'.repeat(3 - filledStars)}`;
+  }
+
   private bindButtons(): void {
     const backButton = this.backButton.getComponent(Button) ?? this.backButton.addComponent(Button);
     backButton.interactable = true;
@@ -503,6 +535,20 @@ export class BubbleShooterController extends Component {
     director.loadScene('BubbleShooter');
   }
 
+  private openNextStage(): void {
+    const nextStageId = this.getResolvedStageConfig().stageId + 1;
+    if (!getBubbleStageConfig(nextStageId)) {
+      return;
+    }
+
+    BubbleStageSelection.selectedStage = nextStageId;
+    director.loadScene('BubbleShooter');
+  }
+
+  private hasNextStage(): boolean {
+    return getBubbleStageConfig(this.getResolvedStageConfig().stageId + 1) !== undefined;
+  }
+
   private refreshStageHud(): void {
     if (this.scoreValueLabel) {
       this.scoreValueLabel.string = `${this.score}`;
@@ -516,8 +562,7 @@ export class BubbleShooterController extends Component {
       this.shotsRemainingLabel.string = `บอลคงเหลือ ${this.ballsLeft} ลูก`;
     }
 
-    const progress = this.initialBoardPearlCount > 0 ? 1 - this.targetLeft / this.initialBoardPearlCount : 1;
-    this.updateScoreProgress(progress);
+    this.updateScoreProgress(this.score);
   }
 
   private reduceBallAfterRealShot(color: PearlColor): void {
@@ -607,11 +652,21 @@ export class BubbleShooterController extends Component {
   }
 
   private finishGame(finalState: BubbleShooterGameState.Win | BubbleShooterGameState.Lose): void {
+    if (this.gameState === BubbleShooterGameState.Win || this.gameState === BubbleShooterGameState.Lose) {
+      return;
+    }
+
+    if (finalState === BubbleShooterGameState.Win) {
+      this.applyWinScoreBonus();
+      this.saveWinProgress();
+    }
+
     this.gameState = finalState;
     this.isAiming = false;
     this.isShooting = false;
     this.isSwapping = false;
     this.hideAimLine();
+    this.refreshStageHud();
 
     if (this.currentPearl) {
       this.currentPearl.active = false;
@@ -623,6 +678,40 @@ export class BubbleShooterController extends Component {
 
     this.showResultPanel(finalState);
     console.log(`[BubbleShooter] Game ${finalState}`);
+  }
+
+  private applyWinScoreBonus(): void {
+    const stageConfig = this.getResolvedStageConfig();
+    const bonusScore = this.ballsLeft * stageConfig.remainingShotBonus + stageConfig.clearBonus;
+    this.score += bonusScore;
+
+    console.log('[BubbleShooter] win bonus applied', {
+      remainingShots: this.ballsLeft,
+      remainingShotBonus: stageConfig.remainingShotBonus,
+      clearBonus: stageConfig.clearBonus,
+      bonusScore,
+      score: this.score,
+    });
+  }
+
+  private saveWinProgress(): void {
+    const stageConfig = this.getResolvedStageConfig();
+    const stageKey = `${stageConfig.stageId}`;
+    const earnedStars = this.getEarnedStars(this.score);
+
+    SaveManager.updateData((data) => {
+      const progress = data.minigames.bubbleShooter;
+      progress.cleared[stageKey] = true;
+      progress.bestScore[stageKey] = Math.max(progress.bestScore[stageKey] ?? 0, this.score);
+      progress.stars[stageKey] = Math.max(progress.stars[stageKey] ?? 0, earnedStars);
+      progress.unlockedStage = Math.max(progress.unlockedStage, stageConfig.stageId + 1);
+    });
+
+    console.log('[BubbleShooter] progress saved', {
+      stageId: stageConfig.stageId,
+      score: this.score,
+      stars: earnedStars,
+    });
   }
 
   private showResultPanel(finalState: BubbleShooterGameState.Win | BubbleShooterGameState.Lose): void {
@@ -640,6 +729,25 @@ export class BubbleShooterController extends Component {
 
     if (this.resultScoreLabel) {
       this.resultScoreLabel.string = `Score ${this.score}`;
+    }
+
+    if (this.resultBestScoreLabel) {
+      const stageKey = `${this.getResolvedStageConfig().stageId}`;
+      const bestScore = SaveManager.getData().minigames.bubbleShooter.bestScore[stageKey] ?? 0;
+      this.resultBestScoreLabel.string = `Best Score ${bestScore}`;
+    }
+
+    if (this.resultStarsLabel) {
+      this.resultStarsLabel.string = this.formatStars(this.getEarnedStars(this.score));
+    }
+
+    if (this.resultNextButton) {
+      const canOpenNextStage = finalState === BubbleShooterGameState.Win && this.hasNextStage();
+      this.resultNextButton.active = canOpenNextStage;
+      const nextButtonComponent = this.resultNextButton.getComponent(Button);
+      if (nextButtonComponent) {
+        nextButtonComponent.interactable = canOpenNextStage;
+      }
     }
   }
 
@@ -695,11 +803,6 @@ export class BubbleShooterController extends Component {
       return;
     }
 
-    if (!this.canSwapThisTurn) {
-      console.log('[BubbleShooter] swap ignored: already swapped this turn');
-      return;
-    }
-
     if (!this.currentPearl || !this.nextPearl) {
       return;
     }
@@ -729,7 +832,6 @@ export class BubbleShooterController extends Component {
         this.nextPearl.setPosition(nextHome);
         this.currentPearlColor = this.nextPearlColor;
         this.nextPearlColor = previousCurrent;
-        this.canSwapThisTurn = false;
         this.isSwapping = false;
 
         this.refreshCurrentPearlVisual();
@@ -1216,9 +1318,9 @@ export class BubbleShooterController extends Component {
   private createResultButton(nodeName: string, parent: Node, x: number, y: number, text: string): Node {
     const button = this.createNode(nodeName, parent);
     button.setPosition(x, y);
-    this.setSize(button, 220, 86);
-    this.drawRoundedRect(button, 220, 86, new Color(255, 255, 255, 238), 28);
-    this.createLabel(`${nodeName}Label`, button, text, 0, 0, 34, new Color(25, 83, 122, 255), 190, 70);
+    this.setSize(button, 250, 86);
+    this.drawRoundedRect(button, 250, 86, new Color(255, 255, 255, 238), 28);
+    this.createLabel(`${nodeName}Label`, button, text, 0, 0, 30, new Color(25, 83, 122, 255), 230, 70);
 
     const buttonComponent = button.addComponent(Button);
     buttonComponent.interactable = true;
