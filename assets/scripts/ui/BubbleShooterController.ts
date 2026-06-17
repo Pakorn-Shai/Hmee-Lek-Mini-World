@@ -1,5 +1,6 @@
 import {
   _decorator,
+  BlockInputEvents,
   Button,
   Color,
   Component,
@@ -16,6 +17,7 @@ import {
   Sprite,
   SpriteFrame,
   tween,
+  Tween,
   UITransform,
   Vec3,
   Widget,
@@ -44,12 +46,15 @@ const AIM_DOT_SPACING = 70;
 const MIN_SHOOT_ANGLE_DEGREES = 15;
 const MAX_SHOOT_ANGLE_DEGREES = 165;
 const SWAP_ANIMATION_DURATION = 0.18;
+const PEARL_BOARD_Y = 600;
+const PROJECTILE_MAX_STEP_DISTANCE = 120;
 
 enum BubbleShooterGameState {
   Ready = 'Ready',
   Aiming = 'Aiming',
   Shooting = 'Shooting',
   Resolving = 'Resolving',
+  Paused = 'Paused',
   Win = 'Win',
   Lose = 'Lose',
 }
@@ -57,7 +62,7 @@ enum BubbleShooterGameState {
 @ccclass('BubbleShooterController')
 export class BubbleShooterController extends Component {
   @property
-  public shootSpeed = 1800;
+  public shootSpeed = 3200;
 
   private safeArea!: Node;
   private topHud!: Node;
@@ -75,7 +80,7 @@ export class BubbleShooterController extends Component {
   private backButton!: Node;
   private pauseButton!: Node;
   private scoreFill!: Node;
-  private targetLabel?: Label;
+  private targetValueLabel?: Label;
   private scoreValueLabel?: Label;
   private shotsRemainingLabel?: Label;
   private resultPanel?: Node;
@@ -84,8 +89,10 @@ export class BubbleShooterController extends Component {
   private resultBestScoreLabel?: Label;
   private resultStarsLabel?: Label;
   private resultNextButton?: Node;
-  private readonly scoreBarWidth = 820;
-  private readonly scoreBarHeight = 54;
+  private pausePanel?: Node;
+  private readonly scoreBarWidth = 430;
+  private readonly scoreBarHeight = 36;
+  private readonly scoreStarSize = 18;
   private scoreStarNodes: Node[] = [];
   private canvasWidth = DESIGN_WIDTH;
   private canvasHeight = DESIGN_HEIGHT;
@@ -100,7 +107,11 @@ export class BubbleShooterController extends Component {
   private canSwapThisTurn = true;
   private isSwapping = false;
   private gameState = BubbleShooterGameState.Ready;
+  private previousGameState = BubbleShooterGameState.Ready;
   private score = 0;
+  private displayedScore = 0;
+  private readonly scoreTweenState = { value: 0 };
+  private scoreStarFilledStates = [false, false, false];
   private clearedCount = 0;
   private initialBoardPearlCount = 0;
   private targetLeft = 0;
@@ -126,6 +137,7 @@ export class BubbleShooterController extends Component {
     this.setupShooterArea();
     this.setupBottomHUD();
     this.setupResultPanel();
+    this.setupPausePanel();
     this.applyLayoutZOrder();
     this.bindButtons();
     this.bindAimInput();
@@ -135,6 +147,8 @@ export class BubbleShooterController extends Component {
   protected start(): void {
     this.ensurePearlBoardVisible();
     this.aimGuide?.setSiblingIndex(this.node.children.length - 1);
+    this.resultPanel?.setSiblingIndex(this.node.children.length - 1);
+    this.pausePanel?.setSiblingIndex(this.node.children.length - 1);
   }
 
   protected onDestroy(): void {
@@ -145,6 +159,7 @@ export class BubbleShooterController extends Component {
     input.off(Input.EventType.MOUSE_DOWN, this.onMouseDown, this);
     input.off(Input.EventType.MOUSE_MOVE, this.onMouseMove, this);
     input.off(Input.EventType.MOUSE_UP, this.onMouseUp, this);
+    Tween.stopAllByTarget(this.scoreTweenState);
   }
 
   protected update(deltaTime: number): void {
@@ -157,12 +172,32 @@ export class BubbleShooterController extends Component {
   }
 
   private onPauseClicked(): void {
-    console.log('Pause clicked');
+    if (!this.canPauseGame()) {
+      console.log('[BubbleShooter] pause ignored:', this.gameState);
+      return;
+    }
+
+    this.previousGameState = this.gameState;
+    if (this.isAiming || this.gameState === BubbleShooterGameState.Aiming) {
+      this.cancelAim();
+    }
+    this.hideAimLine();
+
+    this.gameState = BubbleShooterGameState.Paused;
+    if (this.pausePanel) {
+      this.pausePanel.active = true;
+      this.pausePanel.setSiblingIndex(this.node.children.length - 1);
+    }
+
+    console.log('[BubbleShooter] paused from', this.previousGameState);
   }
 
   private initializeStageState(): void {
     const stageConfig = this.getResolvedStageConfig();
     this.score = 0;
+    this.displayedScore = 0;
+    this.scoreTweenState.value = 0;
+    this.scoreStarFilledStates = [false, false, false];
     this.clearedCount = 0;
     this.targetLeft = stageConfig.clearTarget;
     this.ballsLeft = stageConfig.moveLimit;
@@ -220,6 +255,7 @@ export class BubbleShooterController extends Component {
       'AimGuide',
       'BottomHUD',
       'ResultPanel',
+      'PausePanel',
     ];
 
     for (const child of [...this.node.children]) {
@@ -260,33 +296,39 @@ export class BubbleShooterController extends Component {
     this.topHud.setPosition(0, this.canvasHeight / 2 - 350);
     this.setSize(this.topHud, DESIGN_WIDTH, 620);
 
-    this.backButton = this.createIconButton('BackButton', this.topHud, -575, 188, 'icon_back', 'Back');
-    this.createLabel('StageLabel', this.topHud, `Stage ${BubbleStageSelection.selectedStage}`, 0, 180, 74, new Color(255, 255, 255, 255), 520, 112);
-    this.pauseButton = this.createIconButton('PauseButton', this.topHud, 575, 188, 'icon_pause', 'Pause');
-    this.targetLabel = this.createLabel('TargetLabel', this.topHud, `เป้าหมาย: เหลือ ${this.targetLeft} ลูก`, 0, 62, 44, new Color(255, 255, 255, 255), 900, 78);
+    this.backButton = this.createIconButton('BackButton', this.topHud, -600, 230, 'icon_back', 'Back');
+    this.createLabel('StageLabel', this.topHud, `Stage ${BubbleStageSelection.selectedStage}`, 0, 230, 76, new Color(255, 255, 255, 255), 520, 112);
+    this.pauseButton = this.createIconButton('PauseButton', this.topHud, 600, 230, 'icon_pause', 'Pause');
+
+    const targetSection = this.createNode('TargetSection', this.topHud);
+    targetSection.setPosition(350, 70);
+    this.setSize(targetSection, 360, 130);
+    this.createLabel('TargetTitleLabel', targetSection, 'เป้าหมาย', 0, 26, 34, new Color(255, 255, 255, 225), 340, 58);
+    this.targetValueLabel = this.createLabel('TargetValueLabel', targetSection, `เหลือ ${this.targetLeft} ลูก`, 0, -24, 44, new Color(255, 255, 255, 255), 340, 68);
 
     console.log('[BubbleShooter] setupTopHUD complete');
   }
 
   private setupScoreBar(): void {
     const scoreSection = this.createNode('ScoreSection', this.topHud);
-    scoreSection.setPosition(0, -92);
-    this.setSize(scoreSection, 960, 220);
+    scoreSection.setPosition(-350, 70);
+    this.setSize(scoreSection, 480, 150);
 
-    this.createBar('ScoreBarBackground', scoreSection, 0, 0, this.scoreBarWidth, this.scoreBarHeight, new Color(255, 255, 255, 115), 27);
-    this.scoreFill = this.createBar('ScoreBarFill', scoreSection, -this.scoreBarWidth / 2, 0, 0, this.scoreBarHeight, new Color(255, 222, 91, 245), 27);
+    this.createBar('ScoreBarBackground', scoreSection, 0, -12, this.scoreBarWidth, this.scoreBarHeight, new Color(255, 255, 255, 115), 18);
+    this.scoreFill = this.createBar('ScoreBarFill', scoreSection, -this.scoreBarWidth / 2, -12, 0, this.scoreBarHeight, new Color(255, 222, 91, 245), 18);
     this.scoreFill.setSiblingIndex(1);
 
     this.scoreStarNodes = [];
     this.getStarScoreProgressThresholds().forEach((threshold, index) => {
       const x = -this.scoreBarWidth / 2 + this.scoreBarWidth * threshold;
       const star = this.createNode(`Star${index + 1}`, scoreSection);
-      star.setPosition(x, 8);
-      this.setSize(star, 78, 78);
+      star.setPosition(x, -14);
+      star.setScale(0.75, 0.75, 1);
+      this.setSize(star, this.scoreStarSize, this.scoreStarSize);
       this.scoreStarNodes.push(star);
     });
 
-    this.scoreValueLabel = this.createLabel('ScoreValueLabel', scoreSection, '0', 0, -68, 32, new Color(255, 255, 255, 220), 220, 54);
+    this.scoreValueLabel = this.createLabel('ScoreValueLabel', scoreSection, 'คะแนน 0', 0, 84, 66, new Color(255, 255, 255, 250), 560, 96);
 
     console.log('[BubbleShooter] setupScoreBar complete');
   }
@@ -299,6 +341,7 @@ export class BubbleShooterController extends Component {
     }
 
     this.pearlBoard.active = true;
+    this.pearlBoard.setPosition(0, PEARL_BOARD_Y, 0);
   }
 
   private bindPearlBoardController(): void {
@@ -402,7 +445,7 @@ export class BubbleShooterController extends Component {
     this.bottomHud.setPosition(0, -this.canvasHeight / 2 + 1130);
     this.setSize(this.bottomHud, DESIGN_WIDTH, 150);
     this.createBar('ShotsRemainingBackground', this.bottomHud, 0, 0, 480, 64, new Color(30, 93, 130, 135), 28);
-    this.shotsRemainingLabel = this.createLabel('ShotsRemainingLabel', this.bottomHud, `บอลคงเหลือ ${this.ballsLeft} ลูก`, 0, 0, 34, new Color(255, 255, 255, 255), 580, 68);
+    this.shotsRemainingLabel = this.createLabel('ShotsRemainingLabel', this.bottomHud, `บอลคงเหลือ ${this.ballsLeft} ลูก`, 0, 0, 44, new Color(255, 255, 255, 255), 680, 78);
 
     console.log('[BubbleShooter] setupBottomHUD complete');
   }
@@ -410,22 +453,42 @@ export class BubbleShooterController extends Component {
   private setupResultPanel(): void {
     this.resultPanel = this.createNode('ResultPanel', this.node);
     this.resultPanel.setPosition(Vec3.ZERO);
-    this.setSize(this.resultPanel, 920, 700);
-    this.drawRoundedRect(this.resultPanel, 920, 700, new Color(20, 83, 120, 238), 42);
+    this.setSize(this.resultPanel, 1040, 760);
+    this.drawRoundedRect(this.resultPanel, 1040, 760, new Color(20, 83, 120, 238), 42);
 
-    this.resultTitleLabel = this.createLabel('ResultTitleLabel', this.resultPanel, 'WIN', 0, 235, 84, new Color(255, 255, 255, 255), 620, 120);
-    this.resultStarsLabel = this.createLabel('ResultStarsLabel', this.resultPanel, '☆☆☆', 0, 130, 74, new Color(255, 241, 120, 255), 520, 100);
-    this.resultScoreLabel = this.createLabel('ResultScoreLabel', this.resultPanel, 'คะแนน 0', 0, 45, 44, new Color(255, 235, 123, 255), 620, 80);
-    this.resultBestScoreLabel = this.createLabel('ResultBestScoreLabel', this.resultPanel, 'คะแนนสูงสุด 0', 0, -25, 38, new Color(255, 255, 255, 230), 620, 70);
+    this.resultTitleLabel = this.createLabel('ResultTitleLabel', this.resultPanel, 'WIN', 0, 260, 100, new Color(255, 255, 255, 255), 700, 130);
+    this.resultStarsLabel = this.createLabel('ResultStarsLabel', this.resultPanel, '☆☆☆', 0, 135, 105, new Color(255, 241, 120, 255), 640, 120);
+    this.resultScoreLabel = this.createLabel('ResultScoreLabel', this.resultPanel, 'คะแนน 0', 0, 30, 58, new Color(255, 235, 123, 255), 720, 88);
+    this.resultBestScoreLabel = this.createLabel('ResultBestScoreLabel', this.resultPanel, 'คะแนนสูงสุด 0', 0, -55, 50, new Color(255, 255, 255, 230), 720, 78);
 
-    const retryButton = this.createResultButton('RetryButton', this.resultPanel, -330, -235, 'เล่นใหม่');
-    const stageButton = this.createResultButton('ResultStageSelectButton', this.resultPanel, 0, -235, 'เลือกด่าน');
-    this.resultNextButton = this.createResultButton('NextStageButton', this.resultPanel, 330, -235, 'ด่านต่อไป');
+    const retryButton = this.createResultButton('RetryButton', this.resultPanel, -350, -270, 'เล่นใหม่');
+    const stageButton = this.createResultButton('ResultStageSelectButton', this.resultPanel, 0, -270, 'เลือกด่าน');
+    this.resultNextButton = this.createResultButton('NextStageButton', this.resultPanel, 350, -270, 'ด่านต่อไป');
 
     retryButton.on(Button.EventType.CLICK, this.retryStage, this);
     stageButton.on(Button.EventType.CLICK, this.backToStageSelect, this);
     this.resultNextButton.on(Button.EventType.CLICK, this.openNextStage, this);
     this.resultPanel.active = false;
+  }
+
+  private setupPausePanel(): void {
+    this.pausePanel = this.createNode('PausePanel', this.node);
+    this.pausePanel.setPosition(Vec3.ZERO);
+    this.setSize(this.pausePanel, 820, 640);
+    this.drawRoundedRect(this.pausePanel, 820, 640, new Color(18, 62, 92, 238), 42);
+    this.pausePanel.addComponent(BlockInputEvents);
+
+    this.createLabel('PauseTitleLabel', this.pausePanel, 'พักเกม', 0, 210, 78, new Color(255, 255, 255, 255), 520, 110);
+
+    const resumeButton = this.createPauseButton('PauseResumeButton', this.pausePanel, 0, 70, 'เล่นต่อ');
+    const retryButton = this.createPauseButton('PauseRetryButton', this.pausePanel, 0, -65, 'เล่นใหม่');
+    const stageSelectButton = this.createPauseButton('PauseStageSelectButton', this.pausePanel, 0, -200, 'เลือกด่าน');
+
+    resumeButton.on(Button.EventType.CLICK, this.resumeGame, this);
+    retryButton.on(Button.EventType.CLICK, this.retryStage, this);
+    stageSelectButton.on(Button.EventType.CLICK, this.backToStageSelect, this);
+
+    this.pausePanel.active = false;
   }
 
   private applyLayoutZOrder(): void {
@@ -455,6 +518,7 @@ export class BubbleShooterController extends Component {
     nextPearlLabel?.setSiblingIndex(2);
     this.aimGuide?.setSiblingIndex(this.node.children.length - 1);
     this.resultPanel?.setSiblingIndex(this.node.children.length - 1);
+    this.pausePanel?.setSiblingIndex(this.node.children.length - 1);
   }
 
   private ensurePearlBoardVisible(): void {
@@ -469,9 +533,9 @@ export class BubbleShooterController extends Component {
   public updateScoreProgress(score: number): void {
     const normalizedProgress = this.getScoreProgress(score);
     const fillWidth = this.scoreBarWidth * normalizedProgress;
-    this.scoreFill.setPosition(-this.scoreBarWidth / 2 + fillWidth / 2, 0);
+    this.scoreFill.setPosition(-this.scoreBarWidth / 2 + fillWidth / 2, -12);
     this.setSize(this.scoreFill, fillWidth, this.scoreBarHeight);
-    this.drawRoundedRect(this.scoreFill, fillWidth, this.scoreBarHeight, new Color(255, 222, 91, 245), 27);
+    this.drawRoundedRect(this.scoreFill, fillWidth, this.scoreBarHeight, new Color(255, 222, 91, 245), 18);
     this.updateStars(score);
   }
 
@@ -479,6 +543,8 @@ export class BubbleShooterController extends Component {
     const thresholds = this.getResolvedStageConfig().starScoreThresholds;
     this.scoreStarNodes.forEach((star, index) => {
       const isFilled = score >= thresholds[index];
+      const shouldBounce = isFilled && !this.scoreStarFilledStates[index];
+      this.scoreStarFilledStates[index] = this.scoreStarFilledStates[index] || isFilled;
       star.removeAllChildren();
       this.createLabel(
         `Star${index + 1}FallbackLabel`,
@@ -486,16 +552,28 @@ export class BubbleShooterController extends Component {
         isFilled ? '★' : '☆',
         0,
         0,
-        70,
+        18,
         new Color(255, 255, 255, 255),
-        92,
-        92,
+        24,
+        24,
       );
       this.loadSpriteFrame(isFilled ? 'icon_star_filled' : 'icon_star_empty', (spriteFrame) => {
         star.removeAllChildren();
-        this.createSpriteVisual(`Star${index + 1}Icon`, star, 78, 78, spriteFrame);
+        this.createSpriteVisual(`Star${index + 1}Icon`, star, this.scoreStarSize, this.scoreStarSize, spriteFrame);
       });
+
+      if (shouldBounce) {
+        this.playStarBounce(star);
+      }
     });
+  }
+
+  private playStarBounce(star: Node): void {
+    star.setScale(0.75, 0.75, 1);
+    tween(star)
+      .to(0.1, { scale: new Vec3(0.9, 0.9, 1) })
+      .to(0.12, { scale: new Vec3(0.75, 0.75, 1) })
+      .start();
   }
 
   private getScoreProgress(score: number): number {
@@ -531,6 +609,51 @@ export class BubbleShooterController extends Component {
     this.pauseButton.on(Button.EventType.CLICK, this.onPauseClicked, this);
   }
 
+  private canPauseGame(): boolean {
+    return (
+      this.gameState === BubbleShooterGameState.Ready ||
+      this.gameState === BubbleShooterGameState.Aiming ||
+      this.gameState === BubbleShooterGameState.Shooting ||
+      this.gameState === BubbleShooterGameState.Resolving
+    );
+  }
+
+  private resumeGame(): void {
+    if (this.gameState !== BubbleShooterGameState.Paused) {
+      return;
+    }
+
+    if (this.pausePanel) {
+      this.pausePanel.active = false;
+    }
+
+    this.isAiming = false;
+    this.isShooting = false;
+    this.hideAimLine();
+    this.clearPausedProjectile();
+
+    if (this.currentPearl) {
+      this.currentPearl.active = true;
+    }
+    if (this.nextPearl) {
+      this.nextPearl.active = true;
+    }
+
+    this.previousGameState = BubbleShooterGameState.Ready;
+    this.gameState = BubbleShooterGameState.Ready;
+    console.log('[BubbleShooter] resumed');
+  }
+
+  private clearPausedProjectile(): void {
+    if (!this.activeProjectile) {
+      return;
+    }
+
+    this.activeProjectile.destroy();
+    this.activeProjectile = undefined;
+    this.projectileVelocity.set(0, 0, 0);
+  }
+
   private retryStage(): void {
     director.loadScene('BubbleShooter');
   }
@@ -550,12 +673,10 @@ export class BubbleShooterController extends Component {
   }
 
   private refreshStageHud(): void {
-    if (this.scoreValueLabel) {
-      this.scoreValueLabel.string = `${this.score}`;
-    }
+    this.animateDisplayedScoreTo(this.score);
 
-    if (this.targetLabel) {
-      this.targetLabel.string = `เป้าหมาย: เหลือ ${this.targetLeft} ลูก`;
+    if (this.targetValueLabel) {
+      this.targetValueLabel.string = `เหลือ ${this.targetLeft} ลูก`;
     }
 
     if (this.shotsRemainingLabel) {
@@ -563,6 +684,45 @@ export class BubbleShooterController extends Component {
     }
 
     this.updateScoreProgress(this.score);
+  }
+
+  private animateDisplayedScoreTo(targetScore: number): void {
+    if (!this.scoreValueLabel) {
+      this.displayedScore = targetScore;
+      this.scoreTweenState.value = targetScore;
+      return;
+    }
+
+    if (this.displayedScore === targetScore) {
+      this.updateScoreValueLabel(targetScore);
+      return;
+    }
+
+    Tween.stopAllByTarget(this.scoreTweenState);
+    this.scoreTweenState.value = this.displayedScore;
+    tween(this.scoreTweenState)
+      .to(
+        0.24,
+        { value: targetScore },
+        {
+          onUpdate: () => {
+            this.displayedScore = Math.round(this.scoreTweenState.value);
+            this.updateScoreValueLabel(this.displayedScore);
+          },
+        },
+      )
+      .call(() => {
+        this.displayedScore = targetScore;
+        this.scoreTweenState.value = targetScore;
+        this.updateScoreValueLabel(targetScore);
+      })
+      .start();
+  }
+
+  private updateScoreValueLabel(score: number): void {
+    if (this.scoreValueLabel) {
+      this.scoreValueLabel.string = `คะแนน ${score}`;
+    }
   }
 
   private reduceBallAfterRealShot(color: PearlColor): void {
@@ -721,6 +881,7 @@ export class BubbleShooterController extends Component {
 
     this.resultPanel.active = true;
     this.resultPanel.setSiblingIndex(this.node.children.length - 1);
+    this.playResultPanelOpenAnimation();
 
     if (this.resultTitleLabel) {
       this.resultTitleLabel.string = finalState === BubbleShooterGameState.Win ? 'WIN' : 'LOSE';
@@ -749,6 +910,17 @@ export class BubbleShooterController extends Component {
         nextButtonComponent.interactable = canOpenNextStage;
       }
     }
+  }
+
+  private playResultPanelOpenAnimation(): void {
+    if (!this.resultPanel) {
+      return;
+    }
+
+    this.resultPanel.setScale(0.85, 0.85, 1);
+    tween(this.resultPanel)
+      .to(0.18, { scale: new Vec3(1, 1, 1) })
+      .start();
   }
 
   private prepareLauncherPearls(): void {
@@ -793,6 +965,11 @@ export class BubbleShooterController extends Component {
   }
 
   private swapCurrentAndNextPearls(): void {
+    if (this.gameState === BubbleShooterGameState.Paused) {
+      console.log('[BubbleShooter] swap ignored: game is paused');
+      return;
+    }
+
     if (this.gameState !== BubbleShooterGameState.Ready) {
       console.log('[BubbleShooter] swap ignored: game state is not Ready', this.gameState);
       return;
@@ -956,6 +1133,10 @@ export class BubbleShooterController extends Component {
   }
 
   private beginAim(pointerPosition: Vec3): void {
+    if (this.gameState === BubbleShooterGameState.Paused) {
+      return;
+    }
+
     if (this.gameState !== BubbleShooterGameState.Ready || this.isSwapping || this.isShooting || !this.currentPearl || !this.pearlBoardController) {
       return;
     }
@@ -971,6 +1152,7 @@ export class BubbleShooterController extends Component {
 
     this.isAiming = true;
     this.gameState = BubbleShooterGameState.Aiming;
+    this.aimGuide?.setSiblingIndex(this.node.children.length - 1);
     console.log('[BubbleShooter] aim start', {
       pointer: { x: Number(pointerPosition.x.toFixed(1)), y: Number(pointerPosition.y.toFixed(1)) },
       origin: this.getLaunchOriginDebug(),
@@ -990,6 +1172,10 @@ export class BubbleShooterController extends Component {
   }
 
   private releaseAim(pointerPosition: Vec3): void {
+    if (this.gameState === BubbleShooterGameState.Paused) {
+      return;
+    }
+
     if (this.gameState !== BubbleShooterGameState.Aiming || !this.isAiming || this.isShooting) {
       return;
     }
@@ -1044,45 +1230,59 @@ export class BubbleShooterController extends Component {
   }
 
   private updateProjectile(deltaTime: number): void {
+    if (this.gameState === BubbleShooterGameState.Paused) {
+      return;
+    }
+
     if (this.gameState !== BubbleShooterGameState.Shooting || !this.isShooting || !this.activeProjectile || !this.pearlBoardController) {
       return;
     }
 
-    const position = this.activeProjectile.position.clone();
-    position.x += this.projectileVelocity.x * deltaTime;
-    position.y += this.projectileVelocity.y * deltaTime;
+    const stepCount = Math.max(1, Math.min(3, Math.ceil((this.shootSpeed * deltaTime) / PROJECTILE_MAX_STEP_DISTANCE)));
+    const stepDeltaTime = deltaTime / stepCount;
 
-    const bounds = this.getBoardBoundsCanvasLocal();
-    const radius = this.pearlBoardController.getProjectileRadius();
+    for (let step = 0; step < stepCount; step += 1) {
+      if (!this.activeProjectile || this.gameState !== BubbleShooterGameState.Shooting) {
+        return;
+      }
 
-    if (position.x - radius <= bounds.left) {
-      position.x = bounds.left + radius;
-      this.projectileVelocity.x = Math.abs(this.projectileVelocity.x);
-      console.log('[BubbleShooter] projectile hit left wall');
-    } else if (position.x + radius >= bounds.right) {
-      position.x = bounds.right - radius;
-      this.projectileVelocity.x = -Math.abs(this.projectileVelocity.x);
-      console.log('[BubbleShooter] projectile hit right wall');
-    }
+      const position = this.activeProjectile.position.clone();
+      position.x += this.projectileVelocity.x * stepDeltaTime;
+      position.y += this.projectileVelocity.y * stepDeltaTime;
 
-    this.activeProjectile.setPosition(position);
+      const bounds = this.getBoardBoundsCanvasLocal();
+      const radius = this.pearlBoardController.getProjectileRadius();
 
-    const worldPosition = this.canvasLocalToWorld(position);
-    if (worldPosition.y >= this.pearlBoardController.getTopBoundaryWorldY()) {
-      console.log('[BubbleShooter] projectile hit top wall');
-      this.snapProjectileToBoard(worldPosition);
-      return;
-    }
+      if (position.x - radius <= bounds.left) {
+        position.x = bounds.left + radius;
+        this.projectileVelocity.x = Math.abs(this.projectileVelocity.x);
+        console.log('[BubbleShooter] projectile hit left wall');
+      } else if (position.x + radius >= bounds.right) {
+        position.x = bounds.right - radius;
+        this.projectileVelocity.x = -Math.abs(this.projectileVelocity.x);
+        console.log('[BubbleShooter] projectile hit right wall');
+      }
 
-    const collision = this.findProjectileCollision(worldPosition);
-    if (collision) {
-      console.log('[BubbleShooter] projectile hit pearl', {
-        row: collision.row,
-        col: collision.col,
-        color: getPearlColorName(collision.color),
-        distance: Number(collision.distance.toFixed(2)),
-      });
-      this.snapProjectileToBoard(worldPosition);
+      this.activeProjectile.setPosition(position);
+
+      const worldPosition = this.canvasLocalToWorld(position);
+      if (worldPosition.y >= this.pearlBoardController.getTopBoundaryWorldY()) {
+        console.log('[BubbleShooter] projectile hit top wall');
+        this.snapProjectileToBoard(worldPosition);
+        return;
+      }
+
+      const collision = this.findProjectileCollision(worldPosition);
+      if (collision) {
+        console.log('[BubbleShooter] projectile hit pearl', {
+          row: collision.row,
+          col: collision.col,
+          color: getPearlColorName(collision.color),
+          distance: Number(collision.distance.toFixed(2)),
+        });
+        this.snapProjectileToBoard(worldPosition);
+        return;
+      }
     }
   }
 
@@ -1170,6 +1370,10 @@ export class BubbleShooterController extends Component {
   }
 
   private updateAimLine(origin: Vec3, direction: Vec3): void {
+    if (this.aimGuide) {
+      this.aimGuide.active = true;
+    }
+
     const bounds = this.getBoardBoundsCanvasLocal();
     const radius = this.pearlBoardController?.getProjectileRadius() ?? CURRENT_PEARL_FINAL_SIZE / 2;
     const topY = this.worldToCanvasLocalY(this.pearlBoardController?.getTopBoundaryWorldY() ?? this.canvasHeight / 2);
@@ -1318,9 +1522,21 @@ export class BubbleShooterController extends Component {
   private createResultButton(nodeName: string, parent: Node, x: number, y: number, text: string): Node {
     const button = this.createNode(nodeName, parent);
     button.setPosition(x, y);
-    this.setSize(button, 300, 96);
-    this.drawRoundedRect(button, 300, 96, new Color(255, 255, 255, 238), 30);
-    this.createLabel(`${nodeName}Label`, button, text, 0, 0, 34, new Color(25, 83, 122, 255), 270, 78);
+    this.setSize(button, 300, 104);
+    this.drawRoundedRect(button, 300, 104, new Color(255, 255, 255, 238), 30);
+    this.createLabel(`${nodeName}Label`, button, text, 0, 0, 40, new Color(25, 83, 122, 255), 270, 86);
+
+    const buttonComponent = button.addComponent(Button);
+    buttonComponent.interactable = true;
+    return button;
+  }
+
+  private createPauseButton(nodeName: string, parent: Node, x: number, y: number, text: string): Node {
+    const button = this.createNode(nodeName, parent);
+    button.setPosition(x, y);
+    this.setSize(button, 520, 100);
+    this.drawRoundedRect(button, 520, 100, new Color(255, 255, 255, 240), 30);
+    this.createLabel(`${nodeName}Label`, button, text, 0, 0, 42, new Color(24, 82, 122, 255), 460, 82);
 
     const buttonComponent = button.addComponent(Button);
     buttonComponent.interactable = true;

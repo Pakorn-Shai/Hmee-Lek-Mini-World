@@ -1,4 +1,4 @@
-import { _decorator, Component, Enum, instantiate, Node, Prefab, resources, Sprite, SpriteFrame, UITransform, Vec3 } from 'cc';
+import { _decorator, Component, Enum, instantiate, Node, Prefab, resources, Sprite, SpriteFrame, tween, UIOpacity, UITransform, Vec3 } from 'cc';
 import { BubblePearl } from './BubblePearl';
 import {
   DEFAULT_ALLOWED_PEARL_COLORS,
@@ -71,6 +71,8 @@ export class BubblePearlBoardPreview extends Component {
   private readonly pearlSpriteFrames = new Map<PearlColor, SpriteFrame>();
   private readonly loadingPearlSprites = new Set<PearlColor>();
   private readonly pendingSpriteFrameCallbacks = new Map<PearlColor, Array<(spriteFrame: SpriteFrame) => void>>();
+  private readonly matchRemoveDuration = 0.22;
+  private readonly floatingRemoveDuration = 0.28;
 
   protected onLoad(): void {
     this.registerInspectorPearlSprites();
@@ -420,6 +422,10 @@ export class BubblePearlBoardPreview extends Component {
     const transform = pearl.getComponent(UITransform) ?? pearl.addComponent(UITransform);
     transform.setContentSize(this.pearlSize, this.pearlSize);
     pearl.setScale(1, 1, 1);
+    const opacity = pearl.getComponent(UIOpacity);
+    if (opacity) {
+      opacity.opacity = 255;
+    }
   }
 
   private localToNearestAvailableGrid(position: Vec3): BubblePearlGridPosition {
@@ -573,7 +579,7 @@ export class BubblePearlBoardPreview extends Component {
 
       this.occupiedCells.delete(key);
       if (currentCell.node?.isValid) {
-        currentCell.node.destroy();
+        this.playPearlRemoveAnimation(currentCell.node, reason);
       }
 
       removedCount += 1;
@@ -586,6 +592,41 @@ export class BubblePearlBoardPreview extends Component {
     }
 
     return removedCount;
+  }
+
+  private playPearlRemoveAnimation(pearl: Node, reason: 'match' | 'floating'): void {
+    const opacity = pearl.getComponent(UIOpacity) ?? pearl.addComponent(UIOpacity);
+    opacity.opacity = 255;
+
+    if (reason === 'match') {
+      pearl.setScale(1, 1, 1);
+      tween(opacity).to(this.matchRemoveDuration, { opacity: 0 }).start();
+      tween(pearl)
+        .to(0.08, { scale: new Vec3(1.16, 1.16, 1) })
+        .to(this.matchRemoveDuration - 0.08, { scale: new Vec3(0.72, 0.72, 1) })
+        .call(() => {
+          if (pearl.isValid) {
+            pearl.destroy();
+          }
+        })
+        .start();
+      return;
+    }
+
+    const targetPosition = pearl.position.clone();
+    targetPosition.y -= this.verticalSpacing * 1.8;
+    tween(opacity).to(this.floatingRemoveDuration, { opacity: 0 }).start();
+    tween(pearl)
+      .to(this.floatingRemoveDuration, {
+        position: targetPosition,
+        scale: new Vec3(0.72, 0.72, 1),
+      })
+      .call(() => {
+        if (pearl.isValid) {
+          pearl.destroy();
+        }
+      })
+      .start();
   }
 
   private getCellKey(row: number, col: number): string {
