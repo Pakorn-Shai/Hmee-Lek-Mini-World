@@ -415,12 +415,12 @@ export class BubbleShooterController extends Component {
 
     this.resultTitleLabel = this.createLabel('ResultTitleLabel', this.resultPanel, 'WIN', 0, 235, 84, new Color(255, 255, 255, 255), 620, 120);
     this.resultStarsLabel = this.createLabel('ResultStarsLabel', this.resultPanel, '☆☆☆', 0, 130, 74, new Color(255, 241, 120, 255), 520, 100);
-    this.resultScoreLabel = this.createLabel('ResultScoreLabel', this.resultPanel, 'Score 0', 0, 45, 44, new Color(255, 235, 123, 255), 620, 80);
-    this.resultBestScoreLabel = this.createLabel('ResultBestScoreLabel', this.resultPanel, 'Best Score 0', 0, -25, 38, new Color(255, 255, 255, 230), 620, 70);
+    this.resultScoreLabel = this.createLabel('ResultScoreLabel', this.resultPanel, 'คะแนน 0', 0, 45, 44, new Color(255, 235, 123, 255), 620, 80);
+    this.resultBestScoreLabel = this.createLabel('ResultBestScoreLabel', this.resultPanel, 'คะแนนสูงสุด 0', 0, -25, 38, new Color(255, 255, 255, 230), 620, 70);
 
-    const retryButton = this.createResultButton('RetryButton', this.resultPanel, -280, -235, 'Retry');
-    const stageButton = this.createResultButton('ResultStageSelectButton', this.resultPanel, 0, -235, 'Stage Select');
-    this.resultNextButton = this.createResultButton('NextStageButton', this.resultPanel, 280, -235, 'Next Stage');
+    const retryButton = this.createResultButton('RetryButton', this.resultPanel, -330, -235, 'เล่นใหม่');
+    const stageButton = this.createResultButton('ResultStageSelectButton', this.resultPanel, 0, -235, 'เลือกด่าน');
+    this.resultNextButton = this.createResultButton('NextStageButton', this.resultPanel, 330, -235, 'ด่านต่อไป');
 
     retryButton.on(Button.EventType.CLICK, this.retryStage, this);
     stageButton.on(Button.EventType.CLICK, this.backToStageSelect, this);
@@ -728,13 +728,13 @@ export class BubbleShooterController extends Component {
     }
 
     if (this.resultScoreLabel) {
-      this.resultScoreLabel.string = `Score ${this.score}`;
+      this.resultScoreLabel.string = `คะแนน ${this.score}`;
     }
 
     if (this.resultBestScoreLabel) {
       const stageKey = `${this.getResolvedStageConfig().stageId}`;
       const bestScore = SaveManager.getData().minigames.bubbleShooter.bestScore[stageKey] ?? 0;
-      this.resultBestScoreLabel.string = `Best Score ${bestScore}`;
+      this.resultBestScoreLabel.string = `คะแนนสูงสุด ${bestScore}`;
     }
 
     if (this.resultStarsLabel) {
@@ -1318,9 +1318,9 @@ export class BubbleShooterController extends Component {
   private createResultButton(nodeName: string, parent: Node, x: number, y: number, text: string): Node {
     const button = this.createNode(nodeName, parent);
     button.setPosition(x, y);
-    this.setSize(button, 250, 86);
-    this.drawRoundedRect(button, 250, 86, new Color(255, 255, 255, 238), 28);
-    this.createLabel(`${nodeName}Label`, button, text, 0, 0, 30, new Color(25, 83, 122, 255), 230, 70);
+    this.setSize(button, 300, 96);
+    this.drawRoundedRect(button, 300, 96, new Color(255, 255, 255, 238), 30);
+    this.createLabel(`${nodeName}Label`, button, text, 0, 0, 34, new Color(25, 83, 122, 255), 270, 78);
 
     const buttonComponent = button.addComponent(Button);
     buttonComponent.interactable = true;

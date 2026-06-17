@@ -38,6 +38,13 @@ export class StageSelectController extends Component {
     SceneRouter.loadMainMenu();
   }
 
+  // DEBUG TOOL: Temporary progress reset hook for editor buttons. Remove before release.
+  public debugResetProgress(): void {
+    SaveManager.reset();
+    console.log('[StageSelectController] Debug reset progress. Reloading StageSelect.');
+    SceneRouter.loadStageSelect();
+  }
+
   private bindStageButtons(): void {
     const progress = SaveManager.getData().minigames.bubbleShooter;
 
@@ -91,18 +98,18 @@ export class StageSelectController extends Component {
     label.verticalAlign = Label.VerticalAlign.CENTER;
 
     if (!hasStageConfig) {
-      label.string = 'Soon';
+      label.string = 'เร็ว ๆ นี้';
       label.color = new Color(255, 255, 255, 150);
       return;
     }
 
     if (!isUnlocked) {
-      label.string = 'Locked';
+      label.string = 'ล็อก';
       label.color = new Color(255, 255, 255, 165);
       return;
     }
 
-    label.string = isCleared ? `${this.formatStars(stars)} Cleared` : this.formatStars(stars);
+    label.string = isCleared ? `${this.formatStars(stars)} ผ่านแล้ว` : this.formatStars(stars);
     label.color = isCleared ? new Color(255, 241, 120, 255) : new Color(255, 255, 255, 210);
   }
 
