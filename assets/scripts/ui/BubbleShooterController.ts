@@ -48,6 +48,7 @@ const MAX_SHOOT_ANGLE_DEGREES = 165;
 const SWAP_ANIMATION_DURATION = 0.18;
 const PEARL_BOARD_Y = 600;
 const PROJECTILE_MAX_STEP_DISTANCE = 120;
+const SCORE_STAR_MIN_SPACING_RATIO = 1.08;
 
 enum BubbleShooterGameState {
   Ready = 'Ready',
@@ -66,6 +67,8 @@ export class BubbleShooterController extends Component {
 
   private safeArea!: Node;
   private topHud!: Node;
+  private scoreSection?: Node;
+  private targetSection?: Node;
   private pearlBoard?: Node;
   private pearlBoardController?: BubblePearlBoardPreview;
   private shooterArea!: Node;
@@ -90,13 +93,13 @@ export class BubbleShooterController extends Component {
   private resultStarsLabel?: Label;
   private resultNextButton?: Node;
   private pausePanel?: Node;
-  private readonly scoreBarWidth = 430;
-  private readonly scoreBarHeight = 42;
+  private readonly scoreBarWidth = 480;
+  private readonly scoreBarHeight = 38;
   private readonly scoreStarSize = 72;
   private scoreStarNodes: Node[] = [];
   private scoreStarSprites: Sprite[] = [];
   private scoreStarFallbackLabels: Label[] = [];
-  private scoreStarSpriteRequestIds = [0, 0, 0];
+  private scoreStarRenderedFilledStates = [false, false, false];
   private scoreStarFilledSpriteFrame?: SpriteFrame;
   private scoreStarEmptySpriteFrame?: SpriteFrame;
   private canvasWidth = DESIGN_WIDTH;
@@ -131,6 +134,7 @@ export class BubbleShooterController extends Component {
     this.ensureCanvasSize();
     this.clearPreviousLayout();
     this.initializeStageState();
+    this.preloadScoreStarSpriteFrames();
 
     this.setupBackground();
     this.setupSafeArea();
@@ -301,36 +305,36 @@ export class BubbleShooterController extends Component {
     this.topHud.setPosition(0, this.canvasHeight / 2 - 350);
     this.setSize(this.topHud, DESIGN_WIDTH, 620);
 
-    this.backButton = this.createIconButton('BackButton', this.topHud, -600, 230, 'icon_back', 'Back');
-    this.createLabel('StageLabel', this.topHud, `Stage ${BubbleStageSelection.selectedStage}`, 0, 230, 76, new Color(255, 255, 255, 255), 520, 112);
-    this.pauseButton = this.createIconButton('PauseButton', this.topHud, 600, 230, 'icon_pause', 'Pause');
+    this.backButton = this.createIconButton('BackButton', this.topHud, -600, 235, 'icon_back', 'Back');
+    this.createLabel('StageLabel', this.topHud, `Stage ${BubbleStageSelection.selectedStage}`, 0, 235, 70, new Color(255, 255, 255, 255), 520, 104);
+    this.pauseButton = this.createIconButton('PauseButton', this.topHud, 600, 235, 'icon_pause', 'Pause');
 
-    const targetSection = this.createNode('TargetSection', this.topHud);
-    targetSection.setPosition(350, 70);
-    this.setSize(targetSection, 360, 130);
-    this.createLabel('TargetTitleLabel', targetSection, 'เป้าหมาย', 0, 26, 34, new Color(255, 255, 255, 225), 340, 58);
-    this.targetValueLabel = this.createLabel('TargetValueLabel', targetSection, `เหลือ ${this.targetLeft} ลูก`, 0, -24, 44, new Color(255, 255, 255, 255), 340, 68);
+    this.targetSection = this.createNode('TargetSection', this.topHud);
+    this.targetSection.setPosition(390, 35);
+    this.setSize(this.targetSection, 430, 150);
+    this.createLabel('TargetTitleLabel', this.targetSection, 'เป้าหมาย', 0, 28, 34, new Color(255, 255, 255, 225), 390, 58);
+    this.targetValueLabel = this.createLabel('TargetValueLabel', this.targetSection, `เหลือ ${this.targetLeft} ลูก`, 0, -24, 40, new Color(255, 255, 255, 255), 390, 68);
 
     console.log('[BubbleShooter] setupTopHUD complete');
   }
 
   private setupScoreBar(): void {
-    const scoreSection = this.createNode('ScoreSection', this.topHud);
-    scoreSection.setPosition(-350, 70);
-    this.setSize(scoreSection, 480, 150);
+    this.scoreSection = this.createNode('ScoreSection', this.topHud);
+    this.scoreSection.setPosition(-390, 35);
+    this.setSize(this.scoreSection, 620, 170);
 
-    this.createBar('ScoreBarBackground', scoreSection, 0, -12, this.scoreBarWidth, this.scoreBarHeight, new Color(255, 255, 255, 115), 21);
-    this.scoreFill = this.createBar('ScoreBarFill', scoreSection, -this.scoreBarWidth / 2, -12, 0, this.scoreBarHeight, new Color(255, 222, 91, 245), 21);
+    this.createBar('ScoreBarBackground', this.scoreSection, 0, -24, this.scoreBarWidth, this.scoreBarHeight, new Color(255, 255, 255, 115), 19);
+    this.scoreFill = this.createBar('ScoreBarFill', this.scoreSection, -this.scoreBarWidth / 2, -24, 0, this.scoreBarHeight, new Color(255, 222, 91, 245), 19);
     this.scoreFill.setSiblingIndex(1);
 
     this.scoreStarNodes = [];
     this.scoreStarSprites = [];
     this.scoreStarFallbackLabels = [];
-    this.scoreStarSpriteRequestIds = [0, 0, 0];
-    this.getStarScoreProgressThresholds().forEach((threshold, index) => {
-      const x = -this.scoreBarWidth / 2 + this.scoreBarWidth * threshold;
-      const star = this.createNode(`Star${index + 1}`, scoreSection);
-      star.setPosition(x, 10);
+    this.scoreStarRenderedFilledStates = [false, false, false];
+    const starPositions = this.getScoreStarPositions();
+    starPositions.forEach((x, index) => {
+      const star = this.createNode(`Star${index + 1}`, this.scoreSection);
+      star.setPosition(x, 2);
       star.setScale(1, 1, 1);
       this.setSize(star, this.scoreStarSize, this.scoreStarSize);
 
@@ -357,7 +361,7 @@ export class BubbleShooterController extends Component {
       this.scoreStarNodes.push(star);
       this.scoreStarSprites.push(sprite);
       this.scoreStarFallbackLabels.push(fallbackLabel);
-      star.setSiblingIndex(2 + index);
+      star.setSiblingIndex(this.scoreSection?.children.length ?? 2 + index);
       this.applyScoreStarSprite(index, false);
 
       const starTransform = star.getComponent(UITransform);
@@ -372,9 +376,57 @@ export class BubbleShooterController extends Component {
       });
     });
 
-    this.scoreValueLabel = this.createLabel('ScoreValueLabel', scoreSection, 'คะแนน 0', 0, 84, 66, new Color(255, 255, 255, 250), 560, 96);
+    this.scoreValueLabel = this.createLabel('ScoreValueLabel', this.scoreSection, 'คะแนน 0', 0, 50, 42, new Color(255, 255, 255, 250), 620, 72);
+    this.ensureScoreStarsOnTop();
+    this.logTopHudLayout();
 
     console.log('[BubbleShooter] setupScoreBar complete');
+  }
+
+  private logTopHudLayout(): void {
+    const scoreBarBackground = this.scoreSection?.getChildByName('ScoreBarBackground');
+    const scoreLabelNode = this.scoreValueLabel?.node;
+    const targetLabelNode = this.targetValueLabel?.node;
+
+    console.log('[BubbleShooter] TopHUD layout', {
+      topHud: this.getNodeLayoutDebug(this.topHud),
+      scoreSection: this.scoreSection ? this.getNodeLayoutDebug(this.scoreSection) : null,
+      targetSection: this.targetSection ? this.getNodeLayoutDebug(this.targetSection) : null,
+      scoreBar: scoreBarBackground
+        ? {
+            position: this.getPositionDebug(scoreBarBackground),
+            width: this.scoreBarWidth,
+            height: this.scoreBarHeight,
+          }
+        : null,
+      stars: this.scoreStarNodes.map((star) => this.getNodeLayoutDebug(star)),
+      scoreLabel: scoreLabelNode ? this.getNodeLayoutDebug(scoreLabelNode) : null,
+      targetLabel: targetLabelNode ? this.getNodeLayoutDebug(targetLabelNode) : null,
+    });
+  }
+
+  private getNodeLayoutDebug(node: Node): {
+    name: string;
+    position: { x: number; y: number; z: number };
+    contentSize: { width: number; height: number } | null;
+    scale: { x: number; y: number; z: number };
+    siblingIndex: number;
+  } {
+    const transform = node.getComponent(UITransform);
+    const scale = node.scale;
+
+    return {
+      name: node.name,
+      position: this.getPositionDebug(node),
+      contentSize: transform ? { width: transform.width, height: transform.height } : null,
+      scale: { x: scale.x, y: scale.y, z: scale.z },
+      siblingIndex: node.getSiblingIndex(),
+    };
+  }
+
+  private getPositionDebug(node: Node): { x: number; y: number; z: number } {
+    const position = node.position;
+    return { x: position.x, y: position.y, z: position.z };
   }
 
   private bindScenePearlBoard(): void {
@@ -577,9 +629,9 @@ export class BubbleShooterController extends Component {
   public updateScoreProgress(score: number): void {
     const normalizedProgress = this.getScoreProgress(score);
     const fillWidth = this.scoreBarWidth * normalizedProgress;
-    this.scoreFill.setPosition(-this.scoreBarWidth / 2 + fillWidth / 2, -12);
+    this.scoreFill.setPosition(-this.scoreBarWidth / 2 + fillWidth / 2, -24);
     this.setSize(this.scoreFill, fillWidth, this.scoreBarHeight);
-    this.drawRoundedRect(this.scoreFill, fillWidth, this.scoreBarHeight, new Color(255, 222, 91, 245), 21);
+    this.drawRoundedRect(this.scoreFill, fillWidth, this.scoreBarHeight, new Color(255, 222, 91, 245), 19);
     this.updateStars(score);
   }
 
@@ -593,13 +645,17 @@ export class BubbleShooterController extends Component {
 
       const isFilled = score >= thresholds[index];
       const shouldBounce = isFilled && !this.scoreStarFilledStates[index];
+      const shouldRefreshVisual = this.scoreStarRenderedFilledStates[index] !== isFilled || !sprite.spriteFrame;
       this.scoreStarFilledStates[index] = this.scoreStarFilledStates[index] || isFilled;
-      this.applyScoreStarSprite(index, isFilled);
+      if (shouldRefreshVisual) {
+        this.applyScoreStarSprite(index, isFilled);
+      }
 
       if (shouldBounce) {
         this.playStarBounce(star);
       }
     });
+    this.ensureScoreStarsOnTop();
   }
 
   private applyScoreStarSprite(index: number, isFilled: boolean): void {
@@ -610,50 +666,27 @@ export class BubbleShooterController extends Component {
       return;
     }
 
+    this.scoreStarRenderedFilledStates[index] = isFilled;
     fallbackLabel.string = isFilled ? '★' : '☆';
     fallbackLabel.color = isFilled ? new Color(255, 241, 120, 255) : new Color(255, 255, 255, 245);
-    fallbackLabel.node.active = true;
-
-    const requestId = (this.scoreStarSpriteRequestIds[index] ?? 0) + 1;
-    this.scoreStarSpriteRequestIds[index] = requestId;
     const cachedSpriteFrame = isFilled ? this.scoreStarFilledSpriteFrame : this.scoreStarEmptySpriteFrame;
     if (cachedSpriteFrame) {
-      if (star.isValid && sprite.node.isValid && fallbackLabel.node.isValid) {
-        sprite.spriteFrame = cachedSpriteFrame;
-        fallbackLabel.node.active = false;
-      }
+      sprite.spriteFrame = cachedSpriteFrame;
+      fallbackLabel.node.active = false;
       return;
     }
 
-    const assetName = isFilled ? 'icon_star_filled' : 'icon_star_empty';
-
-    this.loadSpriteFrame(assetName, (spriteFrame) => {
-      if (this.scoreStarSpriteRequestIds[index] !== requestId || !star.isValid || !sprite.node.isValid || !fallbackLabel.node.isValid) {
-        return;
-      }
-
-      if (isFilled) {
-        this.scoreStarFilledSpriteFrame = spriteFrame;
-      } else {
-        this.scoreStarEmptySpriteFrame = spriteFrame;
-      }
-
-      sprite.spriteFrame = spriteFrame;
-      fallbackLabel.node.active = false;
-    }, () => {
-      if (this.scoreStarSpriteRequestIds[index] !== requestId || !star.isValid || !fallbackLabel.node.isValid) {
-        return;
-      }
-
-      fallbackLabel.node.active = true;
-    });
+    sprite.spriteFrame = null;
+    fallbackLabel.node.active = true;
   }
 
   private playStarBounce(star: Node): void {
+    Tween.stopAllByTarget(star);
     star.setScale(1, 1, 1);
     tween(star)
-      .to(0.1, { scale: new Vec3(1.18, 1.18, 1) })
-      .to(0.12, { scale: new Vec3(1, 1, 1) })
+      .to(0.1, { scale: new Vec3(1.24, 1.24, 1) }, { easing: 'quadOut' })
+      .to(0.12, { scale: new Vec3(0.96, 0.96, 1) }, { easing: 'quadInOut' })
+      .to(0.1, { scale: new Vec3(1, 1, 1) }, { easing: 'quadOut' })
       .start();
   }
 
@@ -666,6 +699,56 @@ export class BubbleShooterController extends Component {
     const thresholds = this.getResolvedStageConfig().starScoreThresholds;
     const maxScore = Math.max(1, thresholds[2]);
     return thresholds.map((threshold) => Math.max(0, Math.min(threshold / maxScore, 1)));
+  }
+
+  private getScoreStarPositions(): number[] {
+    const progressThresholds = this.getStarScoreProgressThresholds();
+    const inset = this.scoreStarSize / 2;
+    const minX = -this.scoreBarWidth / 2 + inset;
+    const maxX = this.scoreBarWidth / 2 - inset;
+    const trackWidth = Math.max(0, maxX - minX);
+    const minSpacing = Math.min(trackWidth / Math.max(1, progressThresholds.length - 1), this.scoreStarSize * SCORE_STAR_MIN_SPACING_RATIO);
+
+    // Place stars on the real score bar track, then keep close thresholds from overlapping.
+    const positions = progressThresholds.map((threshold) => minX + trackWidth * threshold);
+    for (let index = 1; index < positions.length; index += 1) {
+      positions[index] = Math.max(positions[index], positions[index - 1] + minSpacing);
+    }
+    for (let index = positions.length - 2; index >= 0; index -= 1) {
+      positions[index] = Math.min(positions[index], positions[index + 1] - minSpacing);
+    }
+
+    return positions.map((position) => Math.max(minX, Math.min(maxX, position)));
+  }
+
+  private preloadScoreStarSpriteFrames(): void {
+    this.loadSpriteFrame('icon_star_filled', (spriteFrame) => {
+      this.scoreStarFilledSpriteFrame = spriteFrame;
+      this.refreshScoreStarSprites();
+    });
+    this.loadSpriteFrame('icon_star_empty', (spriteFrame) => {
+      this.scoreStarEmptySpriteFrame = spriteFrame;
+      this.refreshScoreStarSprites();
+    });
+  }
+
+  private refreshScoreStarSprites(): void {
+    const thresholds = this.getResolvedStageConfig().starScoreThresholds;
+    this.scoreStarNodes.forEach((_star, index) => {
+      this.applyScoreStarSprite(index, this.score >= thresholds[index]);
+    });
+  }
+
+  private ensureScoreStarsOnTop(): void {
+    if (!this.scoreSection) {
+      return;
+    }
+
+    for (const star of this.scoreStarNodes) {
+      if (star.isValid) {
+        star.setSiblingIndex(this.scoreSection.children.length - 1);
+      }
+    }
   }
 
   private getEarnedStars(score = this.score): number {

@@ -33,6 +33,10 @@ export interface BubblePearlMatchResult {
 
 @ccclass('BubblePearlBoardPreview')
 export class BubblePearlBoardPreview extends Component {
+  public static readonly DEFAULT_PEARL_SIZE = 160;
+  public static readonly DEFAULT_HORIZONTAL_SPACING = 166;
+  public static readonly DEFAULT_VERTICAL_SPACING = 144;
+
   @property(Prefab)
   public pearlPrefab: Prefab | null = null;
 
@@ -40,13 +44,13 @@ export class BubblePearlBoardPreview extends Component {
   public pearlParent: Node | null = null;
 
   @property
-  public pearlSize = 160;
+  public pearlSize = BubblePearlBoardPreview.DEFAULT_PEARL_SIZE;
 
   @property
-  public horizontalSpacing = 166;
+  public horizontalSpacing = BubblePearlBoardPreview.DEFAULT_HORIZONTAL_SPACING;
 
   @property
-  public verticalSpacing = 144;
+  public verticalSpacing = BubblePearlBoardPreview.DEFAULT_VERTICAL_SPACING;
 
   @property
   public maxColumns = 6;
@@ -65,6 +69,10 @@ export class BubblePearlBoardPreview extends Component {
 
   @property
   public removeFloatingAfterMatch = true;
+
+  // Expensive grid traversal logs stay opt-in so gameplay checks do not spam the console.
+  @property
+  public debugLogging = false;
 
   private rowCounts = [6, 5, 6, 5];
   private readonly occupiedCells = new Map<string, BubblePearlCell>();
@@ -106,7 +114,7 @@ export class BubblePearlBoardPreview extends Component {
 
     this.pearlParent.removeAllChildren();
     this.occupiedCells.clear();
-    console.log('[PearlBoardPreview] allowedColors:', this.getAllowedColorNames());
+    this.debugLog('[PearlBoardPreview] allowedColors:', this.getAllowedColorNames());
 
     this.rowCounts.forEach((count, rowIndex) => {
       for (let column = 0; column < count; column += 1) {
@@ -116,7 +124,7 @@ export class BubblePearlBoardPreview extends Component {
         pearl.setParent(this.pearlParent);
         this.preparePearlNode(pearl);
         this.placePearlAtGrid(pearl, rowIndex, column, color);
-        console.log('[PearlBoardPreview] spawn board pearl', {
+        this.debugLog('[PearlBoardPreview] spawn board pearl', {
           row: rowIndex,
           col: column,
           color: getPearlColorName(color),
@@ -124,8 +132,8 @@ export class BubblePearlBoardPreview extends Component {
       }
     });
 
-    console.log('[PearlBoardPreview] pearlParent child count:', this.pearlParent.children.length);
-    console.log('[PearlBoardPreview] board data initialized:', this.occupiedCells.size);
+    this.debugLog('[PearlBoardPreview] pearlParent child count:', this.pearlParent.children.length);
+    this.debugLog('[PearlBoardPreview] board data initialized:', this.occupiedCells.size);
   }
 
   public createShootingPearl(parent: Node, startLocalPosition: Vec3, color: PearlColor): Node | null {
@@ -243,7 +251,7 @@ export class BubblePearlBoardPreview extends Component {
         ];
 
     const neighbors = [...sideNeighbors, ...diagonalNeighbors].filter((cell) => this.isValidGrid(cell.row, cell.col));
-    console.log('[PearlBoardPreview] neighbors checked', {
+    this.debugLog('[PearlBoardPreview] neighbors checked', {
       row,
       col,
       neighbors,
@@ -261,7 +269,7 @@ export class BubblePearlBoardPreview extends Component {
     const sameColorGroup = this.findSameColorGroup(row, col, startCell.color);
     const matched = sameColorGroup.length >= 3;
 
-    console.log('[PearlBoardPreview] checkMatch result', {
+    this.debugLog('[PearlBoardPreview] checkMatch result', {
       row,
       col,
       color: getPearlColorName(startCell.color),
@@ -556,7 +564,7 @@ export class BubblePearlBoardPreview extends Component {
       }
     }
 
-    console.log('[PearlBoardPreview] same color group found', {
+    this.debugLog('[PearlBoardPreview] same color group found', {
       row,
       col,
       color: getPearlColorName(color),
@@ -583,7 +591,7 @@ export class BubblePearlBoardPreview extends Component {
       }
 
       removedCount += 1;
-      console.log('[PearlBoardPreview] pearl removed', {
+      this.debugLog('[PearlBoardPreview] pearl removed', {
         reason,
         row: currentCell.row,
         col: currentCell.col,
@@ -724,6 +732,14 @@ export class BubblePearlBoardPreview extends Component {
         resourcePath,
       });
     });
+  }
+
+  private debugLog(message: string, ...args: unknown[]): void {
+    if (!this.debugLogging) {
+      return;
+    }
+
+    console.log(message, ...args);
   }
 
   private refreshExistingPearlsWithColor(color: PearlColor): void {
