@@ -87,10 +87,12 @@ export class BubbleShooterController extends Component {
   private targetValueLabel?: Label;
   private scoreValueLabel?: Label;
   private shotsRemainingLabel?: Label;
+  private resultOverlay?: Node;
   private resultPanel?: Node;
   private resultTitleLabel?: Label;
   private resultScoreLabel?: Label;
   private resultBestScoreLabel?: Label;
+  private resultRemainingBallsLabel?: Label;
   private resultStarsLabel?: Label;
   private resultNextButton?: Node;
   private pausePanel?: Node;
@@ -548,19 +550,45 @@ export class BubbleShooterController extends Component {
   }
 
   private setupResultPanel(): void {
+    const previousOverlay = this.node.getChildByName('ResultOverlay');
+    if (previousOverlay) {
+      previousOverlay.removeFromParent();
+      previousOverlay.destroy();
+    }
+
+    this.resultOverlay = this.createNode('ResultOverlay', this.node);
+    this.resultOverlay.setPosition(Vec3.ZERO);
+    this.setSize(this.resultOverlay, this.canvasWidth, this.canvasHeight);
+    this.addFullStretchWidget(this.resultOverlay);
+    this.drawRoundedRect(this.resultOverlay, this.canvasWidth, this.canvasHeight, new Color(8, 27, 48, 105), 0);
+    this.resultOverlay.addComponent(BlockInputEvents);
+    this.resultOverlay.active = false;
+
     this.resultPanel = this.createNode('ResultPanel', this.node);
-    this.resultPanel.setPosition(Vec3.ZERO);
-    this.setSize(this.resultPanel, 1040, 760);
-    this.drawRoundedRect(this.resultPanel, 1040, 760, new Color(20, 83, 120, 238), 42);
+    this.resultPanel.setPosition(0, 180);
+    this.setSize(this.resultPanel, 1080, 820);
+    this.drawRoundedRect(this.resultPanel, 1080, 820, new Color(18, 78, 122, 245), 56);
+    this.resultPanel.addComponent(BlockInputEvents);
 
-    this.resultTitleLabel = this.createLabel('ResultTitleLabel', this.resultPanel, 'WIN', 0, 260, 100, new Color(255, 255, 255, 255), 700, 130);
-    this.resultStarsLabel = this.createLabel('ResultStarsLabel', this.resultPanel, '☆☆☆', 0, 135, 105, new Color(255, 241, 120, 255), 640, 120);
-    this.resultScoreLabel = this.createLabel('ResultScoreLabel', this.resultPanel, 'คะแนน 0', 0, 30, 58, new Color(255, 235, 123, 255), 720, 88);
-    this.resultBestScoreLabel = this.createLabel('ResultBestScoreLabel', this.resultPanel, 'คะแนนสูงสุด 0', 0, -55, 50, new Color(255, 255, 255, 230), 720, 78);
+    const headerGlow = this.createNode('ResultHeaderGlow', this.resultPanel);
+    headerGlow.setPosition(0, 250);
+    this.setSize(headerGlow, 900, 190);
+    this.drawRoundedRect(headerGlow, 900, 190, new Color(255, 255, 255, 26), 70);
 
-    const retryButton = this.createResultButton('RetryButton', this.resultPanel, -350, -270, 'เล่นใหม่');
-    const stageButton = this.createResultButton('ResultStageSelectButton', this.resultPanel, 0, -270, 'เลือกด่าน');
-    this.resultNextButton = this.createResultButton('NextStageButton', this.resultPanel, 350, -270, 'ด่านต่อไป');
+    const scoreBackplate = this.createNode('ResultScoreBackplate', this.resultPanel);
+    scoreBackplate.setPosition(0, -25);
+    this.setSize(scoreBackplate, 820, 245);
+    this.drawRoundedRect(scoreBackplate, 820, 245, new Color(9, 47, 82, 96), 42);
+
+    this.resultTitleLabel = this.createLabel('ResultTitleLabel', this.resultPanel, 'WIN', 0, 292, 112, new Color(255, 255, 255, 255), 760, 132);
+    this.resultStarsLabel = this.createLabel('ResultStarsLabel', this.resultPanel, '☆☆☆', 0, 165, 104, new Color(255, 241, 120, 255), 660, 118);
+    this.resultScoreLabel = this.createLabel('ResultScoreLabel', this.resultPanel, 'คะแนน 0', 0, 40, 60, new Color(255, 238, 138, 255), 820, 86);
+    this.resultBestScoreLabel = this.createLabel('ResultBestScoreLabel', this.resultPanel, 'คะแนนสูงสุด 0', 0, -42, 50, new Color(255, 255, 255, 236), 820, 76);
+    this.resultRemainingBallsLabel = this.createLabel('ResultRemainingBallsLabel', this.resultPanel, 'เหลือลูกบอล 0 ลูก', 0, -118, 44, new Color(209, 239, 255, 245), 820, 70);
+
+    const retryButton = this.createResultButton('RetryButton', this.resultPanel, -360, -292, 'เล่นใหม่');
+    const stageButton = this.createResultButton('ResultStageSelectButton', this.resultPanel, 0, -292, 'เลือกด่าน');
+    this.resultNextButton = this.createResultButton('NextStageButton', this.resultPanel, 360, -292, 'ด่านต่อไป');
 
     retryButton.on(Button.EventType.CLICK, this.retryStage, this);
     stageButton.on(Button.EventType.CLICK, this.backToStageSelect, this);
@@ -1041,6 +1069,12 @@ export class BubbleShooterController extends Component {
       return;
     }
 
+    this.setGameplayHudVisibleForResult(false);
+    if (this.resultOverlay) {
+      this.resultOverlay.active = true;
+      this.resultOverlay.setSiblingIndex(this.node.children.length - 1);
+    }
+
     this.resultPanel.active = true;
     this.resultPanel.setSiblingIndex(this.node.children.length - 1);
     this.playResultPanelOpenAnimation();
@@ -1064,13 +1098,49 @@ export class BubbleShooterController extends Component {
       this.resultStarsLabel.string = this.formatStars(this.getEarnedStars(this.score));
     }
 
+    if (this.resultRemainingBallsLabel) {
+      const shouldShowRemainingBalls = finalState === BubbleShooterGameState.Win;
+      this.resultRemainingBallsLabel.node.active = shouldShowRemainingBalls;
+      this.resultRemainingBallsLabel.string = `เหลือลูกบอล ${this.ballsLeft} ลูก`;
+    }
+
     if (this.resultNextButton) {
       const canOpenNextStage = finalState === BubbleShooterGameState.Win && this.hasNextStage();
-      this.resultNextButton.active = canOpenNextStage;
+      this.resultNextButton.active = true;
       const nextButtonComponent = this.resultNextButton.getComponent(Button);
       if (nextButtonComponent) {
         nextButtonComponent.interactable = canOpenNextStage;
       }
+      this.setResultNextButtonVisualState(canOpenNextStage);
+    }
+  }
+
+  private setGameplayHudVisibleForResult(visible: boolean): void {
+    if (this.bottomHud) {
+      this.bottomHud.active = visible;
+    }
+
+    if (this.shotsRemainingLabel) {
+      this.shotsRemainingLabel.node.active = visible;
+    }
+  }
+
+  private setResultNextButtonVisualState(isEnabled: boolean): void {
+    if (!this.resultNextButton) {
+      return;
+    }
+
+    this.drawRoundedRect(
+      this.resultNextButton,
+      320,
+      112,
+      isEnabled ? new Color(255, 255, 255, 242) : new Color(197, 218, 232, 180),
+      34,
+    );
+
+    const label = this.resultNextButton.getChildByName('NextStageButtonLabel')?.getComponent(Label);
+    if (label) {
+      label.color = isEnabled ? new Color(25, 83, 122, 255) : new Color(83, 117, 139, 230);
     }
   }
 
@@ -1684,9 +1754,9 @@ export class BubbleShooterController extends Component {
   private createResultButton(nodeName: string, parent: Node, x: number, y: number, text: string): Node {
     const button = this.createNode(nodeName, parent);
     button.setPosition(x, y);
-    this.setSize(button, 300, 104);
-    this.drawRoundedRect(button, 300, 104, new Color(255, 255, 255, 238), 30);
-    this.createLabel(`${nodeName}Label`, button, text, 0, 0, 40, new Color(25, 83, 122, 255), 270, 86);
+    this.setSize(button, 320, 112);
+    this.drawRoundedRect(button, 320, 112, new Color(255, 255, 255, 242), 34);
+    this.createLabel(`${nodeName}Label`, button, text, 0, 0, 44, new Color(25, 83, 122, 255), 292, 90);
 
     const buttonComponent = button.addComponent(Button);
     buttonComponent.interactable = true;
