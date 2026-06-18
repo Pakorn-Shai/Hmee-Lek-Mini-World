@@ -91,9 +91,14 @@ export class BubbleShooterController extends Component {
   private resultNextButton?: Node;
   private pausePanel?: Node;
   private readonly scoreBarWidth = 430;
-  private readonly scoreBarHeight = 36;
-  private readonly scoreStarSize = 18;
+  private readonly scoreBarHeight = 42;
+  private readonly scoreStarSize = 72;
   private scoreStarNodes: Node[] = [];
+  private scoreStarSprites: Sprite[] = [];
+  private scoreStarFallbackLabels: Label[] = [];
+  private scoreStarSpriteRequestIds = [0, 0, 0];
+  private scoreStarFilledSpriteFrame?: SpriteFrame;
+  private scoreStarEmptySpriteFrame?: SpriteFrame;
   private canvasWidth = DESIGN_WIDTH;
   private canvasHeight = DESIGN_HEIGHT;
   private isAiming = false;
@@ -314,18 +319,57 @@ export class BubbleShooterController extends Component {
     scoreSection.setPosition(-350, 70);
     this.setSize(scoreSection, 480, 150);
 
-    this.createBar('ScoreBarBackground', scoreSection, 0, -12, this.scoreBarWidth, this.scoreBarHeight, new Color(255, 255, 255, 115), 18);
-    this.scoreFill = this.createBar('ScoreBarFill', scoreSection, -this.scoreBarWidth / 2, -12, 0, this.scoreBarHeight, new Color(255, 222, 91, 245), 18);
+    this.createBar('ScoreBarBackground', scoreSection, 0, -12, this.scoreBarWidth, this.scoreBarHeight, new Color(255, 255, 255, 115), 21);
+    this.scoreFill = this.createBar('ScoreBarFill', scoreSection, -this.scoreBarWidth / 2, -12, 0, this.scoreBarHeight, new Color(255, 222, 91, 245), 21);
     this.scoreFill.setSiblingIndex(1);
 
     this.scoreStarNodes = [];
+    this.scoreStarSprites = [];
+    this.scoreStarFallbackLabels = [];
+    this.scoreStarSpriteRequestIds = [0, 0, 0];
     this.getStarScoreProgressThresholds().forEach((threshold, index) => {
       const x = -this.scoreBarWidth / 2 + this.scoreBarWidth * threshold;
       const star = this.createNode(`Star${index + 1}`, scoreSection);
-      star.setPosition(x, -14);
-      star.setScale(0.75, 0.75, 1);
+      star.setPosition(x, 10);
+      star.setScale(1, 1, 1);
       this.setSize(star, this.scoreStarSize, this.scoreStarSize);
+
+      const visual = this.createNode(`Star${index + 1}Icon`, star);
+      visual.setPosition(Vec3.ZERO);
+      this.setSize(visual, this.scoreStarSize, this.scoreStarSize);
+
+      const sprite = visual.addComponent(Sprite);
+      sprite.sizeMode = Sprite.SizeMode.CUSTOM;
+      sprite.type = Sprite.Type.SIMPLE;
+
+      const fallbackLabel = this.createLabel(
+        `Star${index + 1}FallbackLabel`,
+        star,
+        '☆',
+        0,
+        0,
+        56,
+        new Color(255, 255, 255, 255),
+        72,
+        72,
+      );
+
       this.scoreStarNodes.push(star);
+      this.scoreStarSprites.push(sprite);
+      this.scoreStarFallbackLabels.push(fallbackLabel);
+      star.setSiblingIndex(2 + index);
+      this.applyScoreStarSprite(index, false);
+
+      const starTransform = star.getComponent(UITransform);
+      const starPosition = star.position;
+      const starScale = star.scale;
+      console.log('[BubbleShooter] score star created', {
+        name: star.name,
+        position: { x: starPosition.x, y: starPosition.y, z: starPosition.z },
+        contentSize: starTransform ? { width: starTransform.width, height: starTransform.height } : null,
+        scale: { x: starScale.x, y: starScale.y, z: starScale.z },
+        siblingIndex: star.getSiblingIndex(),
+      });
     });
 
     this.scoreValueLabel = this.createLabel('ScoreValueLabel', scoreSection, 'คะแนน 0', 0, 84, 66, new Color(255, 255, 255, 250), 560, 96);
@@ -535,32 +579,22 @@ export class BubbleShooterController extends Component {
     const fillWidth = this.scoreBarWidth * normalizedProgress;
     this.scoreFill.setPosition(-this.scoreBarWidth / 2 + fillWidth / 2, -12);
     this.setSize(this.scoreFill, fillWidth, this.scoreBarHeight);
-    this.drawRoundedRect(this.scoreFill, fillWidth, this.scoreBarHeight, new Color(255, 222, 91, 245), 18);
+    this.drawRoundedRect(this.scoreFill, fillWidth, this.scoreBarHeight, new Color(255, 222, 91, 245), 21);
     this.updateStars(score);
   }
 
   public updateStars(score: number): void {
     const thresholds = this.getResolvedStageConfig().starScoreThresholds;
     this.scoreStarNodes.forEach((star, index) => {
+      const sprite = this.scoreStarSprites[index];
+      if (!sprite) {
+        return;
+      }
+
       const isFilled = score >= thresholds[index];
       const shouldBounce = isFilled && !this.scoreStarFilledStates[index];
       this.scoreStarFilledStates[index] = this.scoreStarFilledStates[index] || isFilled;
-      star.removeAllChildren();
-      this.createLabel(
-        `Star${index + 1}FallbackLabel`,
-        star,
-        isFilled ? '★' : '☆',
-        0,
-        0,
-        18,
-        new Color(255, 255, 255, 255),
-        24,
-        24,
-      );
-      this.loadSpriteFrame(isFilled ? 'icon_star_filled' : 'icon_star_empty', (spriteFrame) => {
-        star.removeAllChildren();
-        this.createSpriteVisual(`Star${index + 1}Icon`, star, this.scoreStarSize, this.scoreStarSize, spriteFrame);
-      });
+      this.applyScoreStarSprite(index, isFilled);
 
       if (shouldBounce) {
         this.playStarBounce(star);
@@ -568,11 +602,58 @@ export class BubbleShooterController extends Component {
     });
   }
 
+  private applyScoreStarSprite(index: number, isFilled: boolean): void {
+    const star = this.scoreStarNodes[index];
+    const sprite = this.scoreStarSprites[index];
+    const fallbackLabel = this.scoreStarFallbackLabels[index];
+    if (!star || !sprite || !fallbackLabel) {
+      return;
+    }
+
+    fallbackLabel.string = isFilled ? '★' : '☆';
+    fallbackLabel.color = isFilled ? new Color(255, 241, 120, 255) : new Color(255, 255, 255, 245);
+    fallbackLabel.node.active = true;
+
+    const requestId = (this.scoreStarSpriteRequestIds[index] ?? 0) + 1;
+    this.scoreStarSpriteRequestIds[index] = requestId;
+    const cachedSpriteFrame = isFilled ? this.scoreStarFilledSpriteFrame : this.scoreStarEmptySpriteFrame;
+    if (cachedSpriteFrame) {
+      if (star.isValid && sprite.node.isValid && fallbackLabel.node.isValid) {
+        sprite.spriteFrame = cachedSpriteFrame;
+        fallbackLabel.node.active = false;
+      }
+      return;
+    }
+
+    const assetName = isFilled ? 'icon_star_filled' : 'icon_star_empty';
+
+    this.loadSpriteFrame(assetName, (spriteFrame) => {
+      if (this.scoreStarSpriteRequestIds[index] !== requestId || !star.isValid || !sprite.node.isValid || !fallbackLabel.node.isValid) {
+        return;
+      }
+
+      if (isFilled) {
+        this.scoreStarFilledSpriteFrame = spriteFrame;
+      } else {
+        this.scoreStarEmptySpriteFrame = spriteFrame;
+      }
+
+      sprite.spriteFrame = spriteFrame;
+      fallbackLabel.node.active = false;
+    }, () => {
+      if (this.scoreStarSpriteRequestIds[index] !== requestId || !star.isValid || !fallbackLabel.node.isValid) {
+        return;
+      }
+
+      fallbackLabel.node.active = true;
+    });
+  }
+
   private playStarBounce(star: Node): void {
-    star.setScale(0.75, 0.75, 1);
+    star.setScale(1, 1, 1);
     tween(star)
-      .to(0.1, { scale: new Vec3(0.9, 0.9, 1) })
-      .to(0.12, { scale: new Vec3(0.75, 0.75, 1) })
+      .to(0.1, { scale: new Vec3(1.18, 1.18, 1) })
+      .to(0.12, { scale: new Vec3(1, 1, 1) })
       .start();
   }
 
@@ -1692,11 +1773,12 @@ export class BubbleShooterController extends Component {
     return sprite;
   }
 
-  private loadSpriteFrame(assetName: string, onLoaded: (spriteFrame: SpriteFrame) => void): void {
+  private loadSpriteFrame(assetName: string, onLoaded: (spriteFrame: SpriteFrame) => void, onFailed?: () => void): void {
     const resourcePath = `${RESOURCE_ROOT}/${assetName}/spriteFrame`;
     resources.load(resourcePath, SpriteFrame, (error, spriteFrame) => {
       if (error || !spriteFrame) {
         console.error(`[BubbleShooterController] SpriteFrame not found: ${resourcePath}`, error);
+        onFailed?.();
         return;
       }
 
