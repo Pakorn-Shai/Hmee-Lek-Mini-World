@@ -41,8 +41,14 @@ const DESIGN_HEIGHT = 3200;
 const RESOURCE_ROOT = 'bubble-shooter';
 const CURRENT_PEARL_FINAL_SIZE = 154;
 const NEXT_PEARL_FINAL_SIZE = 118;
-const AIM_DOT_COUNT = 28;
-const AIM_DOT_SIZE = 18;
+const AIM_DOT_COUNT = 20;
+const AIM_DOT_START_OFFSET = 200;
+const AIM_DOT_START_SIZE = 22;
+const AIM_DOT_END_SIZE = 10;
+const AIM_DOT_START_ALPHA = 238;
+const AIM_DOT_END_ALPHA = 70;
+const AIM_DOT_HALO_START_ALPHA = 86;
+const AIM_DOT_HALO_END_ALPHA = 18;
 const AIM_DOT_SPACING = 70;
 const MIN_SHOOT_ANGLE_DEGREES = 15;
 const MAX_SHOOT_ANGLE_DEGREES = 165;
@@ -1689,6 +1695,7 @@ export class BubbleShooterController extends Component {
     this.isShooting = true;
     this.gameState = BubbleShooterGameState.Shooting;
     this.currentPearl.active = false;
+    this.playLaunchFeedback(origin, direction);
     this.reduceBallAfterRealShot(this.currentPearlColor);
 
     console.log('[BubbleShooter] shoot pearl', {
@@ -1768,6 +1775,9 @@ export class BubbleShooterController extends Component {
     let floatingRemovedCount = 0;
 
     if (grid) {
+      const snapFeedbackPosition = this.nodeLocalToCanvasLocal(this.activeProjectile);
+      this.playSnapFeedback(snapFeedbackPosition);
+
       console.log('[BubbleShooter] snapped projectile', {
         row: grid.row,
         col: grid.col,
@@ -1823,6 +1833,98 @@ export class BubbleShooterController extends Component {
     return nearestCollision;
   }
 
+  private playLaunchFeedback(origin: Vec3, direction: Vec3): void {
+    const effect = this.createNode('LaunchFeedback', this.node);
+    effect.setPosition(origin);
+    effect.setScale(0.35, 0.35, 1);
+    effect.setSiblingIndex(this.node.children.length - 1);
+    this.setSize(effect, 112, 112);
+    this.drawCircle(effect, 56, new Color(255, 237, 150, 96));
+
+    const opacity = effect.addComponent(UIOpacity);
+    opacity.opacity = 230;
+
+    const core = this.createNode('LaunchFeedbackCore', effect);
+    core.setPosition(direction.x * 22, direction.y * 22, 0);
+    this.setSize(core, 46, 46);
+    this.drawCircle(core, 23, new Color(255, 255, 248, 178));
+
+    const sideX = -direction.y;
+    const sideY = direction.x;
+    const sparkleOffsets = [-18, 0, 18];
+    sparkleOffsets.forEach((offset, index) => {
+      const sparkle = this.createNode(`LaunchSparkle_${index + 1}`, effect);
+      sparkle.setPosition(direction.x * 30 + sideX * offset, direction.y * 30 + sideY * offset, 0);
+      this.setSize(sparkle, 14, 14);
+      this.drawCircle(sparkle, 7, new Color(255, 255, 224, 214));
+
+      const sparkleOpacity = sparkle.addComponent(UIOpacity);
+      sparkleOpacity.opacity = 220;
+      const targetPosition = new Vec3(direction.x * 78 + sideX * offset * 1.55, direction.y * 78 + sideY * offset * 1.55, 0);
+      tween(sparkle)
+        .to(0.18, { position: targetPosition, scale: new Vec3(0.45, 0.45, 1) })
+        .start();
+      tween(sparkleOpacity)
+        .to(0.18, { opacity: 0 })
+        .start();
+    });
+
+    tween(opacity)
+      .to(0.2, { opacity: 0 })
+      .start();
+    tween(effect)
+      .to(0.2, { scale: new Vec3(1.12, 1.12, 1) })
+      .call(() => effect.destroy())
+      .start();
+  }
+
+  private playSnapFeedback(position: Vec3): void {
+    const effect = this.createNode('SnapFeedback', this.node);
+    effect.setPosition(position);
+    effect.setScale(0.55, 0.55, 1);
+    effect.setSiblingIndex(this.node.children.length - 1);
+    this.setSize(effect, 132, 132);
+    this.drawCircle(effect, 46, new Color(145, 224, 255, 42));
+
+    const opacity = effect.addComponent(UIOpacity);
+    opacity.opacity = 210;
+
+    const ring = this.createNode('SnapFeedbackRing', effect);
+    ring.setPosition(Vec3.ZERO);
+    this.setSize(ring, 112, 112);
+    this.drawCircleOutline(ring, 50, new Color(255, 255, 248, 176), 6);
+
+    for (let index = 0; index < 6; index += 1) {
+      const angle = (Math.PI * 2 * index) / 6;
+      const sparkle = this.createNode(`SnapSparkle_${index + 1}`, effect);
+      const startRadius = 38;
+      const endRadius = 62;
+      sparkle.setPosition(Math.cos(angle) * startRadius, Math.sin(angle) * startRadius, 0);
+      this.setSize(sparkle, 10, 10);
+      this.drawCircle(sparkle, 5, new Color(255, 244, 178, 196));
+
+      const sparkleOpacity = sparkle.addComponent(UIOpacity);
+      sparkleOpacity.opacity = 205;
+      tween(sparkle)
+        .to(0.2, {
+          position: new Vec3(Math.cos(angle) * endRadius, Math.sin(angle) * endRadius, 0),
+          scale: new Vec3(0.35, 0.35, 1),
+        })
+        .start();
+      tween(sparkleOpacity)
+        .to(0.2, { opacity: 0 })
+        .start();
+    }
+
+    tween(opacity)
+      .to(0.22, { opacity: 0 })
+      .start();
+    tween(effect)
+      .to(0.22, { scale: new Vec3(1.08, 1.08, 1) })
+      .call(() => effect.destroy())
+      .start();
+  }
+
   private createAimDots(): void {
     if (!this.aimGuide) {
       return;
@@ -1830,9 +1932,22 @@ export class BubbleShooterController extends Component {
 
     this.aimDots = [];
     for (let index = 0; index < AIM_DOT_COUNT; index += 1) {
+      const progress = index / Math.max(1, AIM_DOT_COUNT - 1);
+      const softenedProgress = progress * progress * (3 - 2 * progress);
+      const dotSize = AIM_DOT_START_SIZE + (AIM_DOT_END_SIZE - AIM_DOT_START_SIZE) * softenedProgress;
+      const haloSize = dotSize + 20 - progress * 6;
+      const dotAlpha = Math.round(AIM_DOT_START_ALPHA + (AIM_DOT_END_ALPHA - AIM_DOT_START_ALPHA) * softenedProgress);
+      const haloAlpha = Math.round(
+        AIM_DOT_HALO_START_ALPHA + (AIM_DOT_HALO_END_ALPHA - AIM_DOT_HALO_START_ALPHA) * softenedProgress,
+      );
       const dot = this.createNode(`AimDot_${index + 1}`, this.aimGuide);
-      this.setSize(dot, AIM_DOT_SIZE, AIM_DOT_SIZE);
-      this.drawCircle(dot, AIM_DOT_SIZE / 2, new Color(255, 255, 255, Math.max(80, 230 - index * 5)));
+      this.setSize(dot, haloSize, haloSize);
+      this.drawCircle(dot, haloSize / 2, new Color(129, 226, 255, haloAlpha));
+
+      const core = this.createNode('AimDotCore', dot);
+      core.setPosition(Vec3.ZERO);
+      this.setSize(core, dotSize, dotSize);
+      this.drawCircle(core, dotSize / 2, new Color(255, 255, 248, dotAlpha));
       dot.active = false;
       this.aimDots.push(dot);
     }
@@ -1848,6 +1963,10 @@ export class BubbleShooterController extends Component {
     const topY = this.worldToCanvasLocalY(this.pearlBoardController?.getTopBoundaryWorldY() ?? this.canvasHeight / 2);
     const simulatedPosition = origin.clone();
     const simulatedDirection = direction.clone();
+
+    // Start dots after AIM_DOT_START_OFFSET to avoid overlapping Hmee Lek's face
+    simulatedPosition.x += simulatedDirection.x * AIM_DOT_START_OFFSET;
+    simulatedPosition.y += simulatedDirection.y * AIM_DOT_START_OFFSET;
 
     for (let index = 0; index < this.aimDots.length; index += 1) {
       simulatedPosition.x += simulatedDirection.x * AIM_DOT_SPACING;
@@ -2294,6 +2413,15 @@ export class BubbleShooterController extends Component {
     graphics.fillColor = color;
     graphics.circle(0, 0, radius);
     graphics.fill();
+  }
+
+  private drawCircleOutline(node: Node, radius: number, color: Color, lineWidth: number): void {
+    const graphics = node.getComponent(Graphics) ?? node.addComponent(Graphics);
+    graphics.clear();
+    graphics.strokeColor = color;
+    graphics.lineWidth = lineWidth;
+    graphics.circle(0, 0, Math.max(0, radius - lineWidth / 2));
+    graphics.stroke();
   }
 
 }
