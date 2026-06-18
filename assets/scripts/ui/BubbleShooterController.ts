@@ -48,7 +48,8 @@ const MAX_SHOOT_ANGLE_DEGREES = 165;
 const SWAP_ANIMATION_DURATION = 0.18;
 const PEARL_BOARD_Y = 600;
 const PROJECTILE_MAX_STEP_DISTANCE = 120;
-const SCORE_STAR_MIN_SPACING_RATIO = 1.08;
+const SCORE_STAR_FIXED_PROGRESS_THRESHOLDS = [0.3, 0.6, 0.9];
+const SCORE_STAR_EDGE_PADDING_RATIO = 0.3;
 
 enum BubbleShooterGameState {
   Ready = 'Ready',
@@ -334,7 +335,7 @@ export class BubbleShooterController extends Component {
     const starPositions = this.getScoreStarPositions();
     starPositions.forEach((x, index) => {
       const star = this.createNode(`Star${index + 1}`, this.scoreSection);
-      star.setPosition(x, 2);
+      star.setPosition(x, -24);
       star.setScale(1, 1, 1);
       this.setSize(star, this.scoreStarSize, this.scoreStarSize);
 
@@ -697,28 +698,25 @@ export class BubbleShooterController extends Component {
 
   private getStarScoreProgressThresholds(): number[] {
     const thresholds = this.getResolvedStageConfig().starScoreThresholds;
-    const maxScore = Math.max(1, thresholds[2]);
-    return thresholds.map((threshold) => Math.max(0, Math.min(threshold / maxScore, 1)));
+    return thresholds.map((_threshold, index) => {
+      const fixedThreshold = SCORE_STAR_FIXED_PROGRESS_THRESHOLDS[index];
+      if (fixedThreshold !== undefined) {
+        return fixedThreshold;
+      }
+
+      return (index + 1) / (thresholds.length + 1);
+    });
   }
 
   private getScoreStarPositions(): number[] {
     const progressThresholds = this.getStarScoreProgressThresholds();
-    const inset = this.scoreStarSize / 2;
-    const minX = -this.scoreBarWidth / 2 + inset;
-    const maxX = this.scoreBarWidth / 2 - inset;
+    const edgePadding = this.scoreStarSize * SCORE_STAR_EDGE_PADDING_RATIO;
+    const minX = -this.scoreBarWidth / 2 + edgePadding;
+    const maxX = this.scoreBarWidth / 2 - edgePadding;
     const trackWidth = Math.max(0, maxX - minX);
-    const minSpacing = Math.min(trackWidth / Math.max(1, progressThresholds.length - 1), this.scoreStarSize * SCORE_STAR_MIN_SPACING_RATIO);
 
-    // Place stars on the real score bar track, then keep close thresholds from overlapping.
-    const positions = progressThresholds.map((threshold) => minX + trackWidth * threshold);
-    for (let index = 1; index < positions.length; index += 1) {
-      positions[index] = Math.max(positions[index], positions[index - 1] + minSpacing);
-    }
-    for (let index = positions.length - 2; index >= 0; index -= 1) {
-      positions[index] = Math.min(positions[index], positions[index + 1] - minSpacing);
-    }
-
-    return positions.map((position) => Math.max(minX, Math.min(maxX, position)));
+    // Star placement uses fixed visual ratios; score thresholds are used only by updateStars().
+    return progressThresholds.map((threshold) => minX + trackWidth * Math.max(0, Math.min(threshold, 1)));
   }
 
   private preloadScoreStarSpriteFrames(): void {
