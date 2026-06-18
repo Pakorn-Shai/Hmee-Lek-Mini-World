@@ -18,6 +18,7 @@ import {
   SpriteFrame,
   tween,
   Tween,
+  UIOpacity,
   UITransform,
   Vec3,
   Widget,
@@ -70,9 +71,12 @@ export class BubbleShooterController extends Component {
   private topHud!: Node;
   private scoreSection?: Node;
   private targetSection?: Node;
+  private boardBackdrop?: Node;
   private pearlBoard?: Node;
   private pearlBoardController?: BubblePearlBoardPreview;
   private shooterArea!: Node;
+  private nextPearlGroup?: Node;
+  private hmeeLek?: Node;
   private currentPearl?: Node;
   private nextPearl?: Node;
   private aimGuide?: Node;
@@ -80,13 +84,13 @@ export class BubbleShooterController extends Component {
   private nextPearlSprite?: Sprite;
   private currentPearlFallback?: Node;
   private nextPearlFallback?: Node;
-  private bottomHud!: Node;
   private backButton!: Node;
   private pauseButton!: Node;
   private scoreFill!: Node;
   private targetValueLabel?: Label;
   private scoreValueLabel?: Label;
-  private shotsRemainingLabel?: Label;
+  private nextBallsLeftLabel?: Label;
+  private nextBallsShadowLabel?: Label;
   private resultOverlay?: Node;
   private resultPanel?: Node;
   private resultTitleLabel?: Label;
@@ -146,8 +150,8 @@ export class BubbleShooterController extends Component {
     this.bindScenePearlBoard();
     this.bindPearlBoardController();
     this.applyStageConfigToBoard();
+    this.setupBoardAreaFrame();
     this.setupShooterArea();
-    this.setupBottomHUD();
     this.setupResultPanel();
     this.setupPausePanel();
     this.applyLayoutZOrder();
@@ -263,6 +267,7 @@ export class BubbleShooterController extends Component {
       'ComingSoonLabel',
       'BackButton',
       'PauseButton',
+      'BoardBackdrop',
       'ShooterArea',
       'AimGuide',
       'BottomHUD',
@@ -305,30 +310,125 @@ export class BubbleShooterController extends Component {
 
   private setupTopHUD(): void {
     this.topHud = this.createNode('TopHUD', this.safeArea);
-    this.topHud.setPosition(0, this.canvasHeight / 2 - 350);
-    this.setSize(this.topHud, DESIGN_WIDTH, 620);
+    this.topHud.setPosition(0, this.canvasHeight / 2 - 360);
+    this.setSize(this.topHud, DESIGN_WIDTH, 650);
 
-    this.backButton = this.createIconButton('BackButton', this.topHud, -600, 235, 'icon_back', 'Back');
-    this.createLabel('StageLabel', this.topHud, `Stage ${BubbleStageSelection.selectedStage}`, 0, 235, 70, new Color(255, 255, 255, 255), 520, 104);
-    this.pauseButton = this.createIconButton('PauseButton', this.topHud, 600, 235, 'icon_pause', 'Pause');
+    const headerRibbon = this.createNode('TopHudRibbon', this.topHud);
+    headerRibbon.setPosition(0, 225);
+    this.setSize(headerRibbon, 1210, 174);
+    this.decorateRoundedPanel(
+      headerRibbon,
+      1210,
+      174,
+      64,
+      new Color(40, 129, 183, 154),
+      new Color(8, 38, 72, 58),
+      new Color(255, 255, 255, 42),
+    );
+
+    this.backButton = this.createIconButton('BackButton', this.topHud, -602, 235, 'icon_back', 'Back');
+
+    const stagePill = this.createNode('StagePill', this.topHud);
+    stagePill.setPosition(0, 235);
+    this.setSize(stagePill, 520, 124);
+    this.decorateRoundedPanel(
+      stagePill,
+      520,
+      124,
+      54,
+      new Color(255, 255, 255, 246),
+      new Color(15, 68, 107, 84),
+      new Color(255, 238, 163, 58),
+    );
+    this.createLabel(
+      'StageLabel',
+      stagePill,
+      `Stage ${BubbleStageSelection.selectedStage}`,
+      0,
+      0,
+      64,
+      new Color(29, 102, 150, 255),
+      460,
+      96,
+    );
+
+    this.pauseButton = this.createIconButton('PauseButton', this.topHud, 602, 235, 'icon_pause', 'Pause');
 
     this.targetSection = this.createNode('TargetSection', this.topHud);
-    this.targetSection.setPosition(390, 35);
-    this.setSize(this.targetSection, 430, 150);
-    this.createLabel('TargetTitleLabel', this.targetSection, 'เป้าหมาย', 0, 28, 34, new Color(255, 255, 255, 225), 390, 58);
-    this.targetValueLabel = this.createLabel('TargetValueLabel', this.targetSection, `เหลือ ${this.targetLeft} ลูก`, 0, -24, 40, new Color(255, 255, 255, 255), 390, 68);
+    this.targetSection.setPosition(410, 24);
+    this.setSize(this.targetSection, 430, 166);
+    this.decorateRoundedPanel(
+      this.targetSection,
+      430,
+      166,
+      48,
+      new Color(255, 255, 255, 240),
+      new Color(12, 68, 107, 78),
+      new Color(255, 244, 178, 50),
+    );
+    this.createLabel('TargetTitleLabel', this.targetSection, 'เป้าหมาย', 0, 42, 34, new Color(49, 133, 181, 235), 360, 52);
+    this.targetValueLabel = this.createLabel(
+      'TargetValueLabel',
+      this.targetSection,
+      `เหลือ ${this.targetLeft} ลูก`,
+      0,
+      -18,
+      42,
+      new Color(26, 86, 126, 255),
+      390,
+      72,
+    );
 
     console.log('[BubbleShooter] setupTopHUD complete');
   }
 
   private setupScoreBar(): void {
     this.scoreSection = this.createNode('ScoreSection', this.topHud);
-    this.scoreSection.setPosition(-390, 35);
-    this.setSize(this.scoreSection, 620, 170);
+    this.scoreSection.setPosition(-410, 24);
+    this.setSize(this.scoreSection, 640, 184);
+    this.decorateRoundedPanel(
+      this.scoreSection,
+      640,
+      184,
+      52,
+      new Color(255, 255, 255, 242),
+      new Color(12, 68, 107, 82),
+      new Color(255, 245, 188, 48),
+    );
 
-    this.createBar('ScoreBarBackground', this.scoreSection, 0, -24, this.scoreBarWidth, this.scoreBarHeight, new Color(255, 255, 255, 115), 19);
-    this.scoreFill = this.createBar('ScoreBarFill', this.scoreSection, -this.scoreBarWidth / 2, -24, 0, this.scoreBarHeight, new Color(255, 222, 91, 245), 19);
-    this.scoreFill.setSiblingIndex(1);
+    const scoreTrackShadow = this.createBar(
+      'ScoreBarTrackShadow',
+      this.scoreSection,
+      0,
+      -34,
+      this.scoreBarWidth + 34,
+      this.scoreBarHeight + 28,
+      new Color(21, 95, 139, 58),
+      32,
+    );
+    const scoreBarBackground = this.createBar(
+      'ScoreBarBackground',
+      this.scoreSection,
+      0,
+      -34,
+      this.scoreBarWidth,
+      this.scoreBarHeight,
+      new Color(79, 168, 213, 174),
+      19,
+    );
+    this.scoreFill = this.createBar(
+      'ScoreBarFill',
+      this.scoreSection,
+      -this.scoreBarWidth / 2,
+      -34,
+      0,
+      this.scoreBarHeight,
+      new Color(255, 220, 78, 248),
+      19,
+    );
+    scoreTrackShadow.setSiblingIndex(3);
+    scoreBarBackground.setSiblingIndex(4);
+    this.scoreFill.setSiblingIndex(5);
 
     this.scoreStarNodes = [];
     this.scoreStarSprites = [];
@@ -337,7 +437,7 @@ export class BubbleShooterController extends Component {
     const starPositions = this.getScoreStarPositions();
     starPositions.forEach((x, index) => {
       const star = this.createNode(`Star${index + 1}`, this.scoreSection);
-      star.setPosition(x, -24);
+      star.setPosition(x, -34);
       star.setScale(1, 1, 1);
       this.setSize(star, this.scoreStarSize, this.scoreStarSize);
 
@@ -379,7 +479,7 @@ export class BubbleShooterController extends Component {
       });
     });
 
-    this.scoreValueLabel = this.createLabel('ScoreValueLabel', this.scoreSection, 'คะแนน 0', 0, 50, 42, new Color(255, 255, 255, 250), 620, 72);
+    this.scoreValueLabel = this.createLabel('ScoreValueLabel', this.scoreSection, 'คะแนน 0', 0, 50, 44, new Color(30, 92, 132, 255), 560, 72);
     this.ensureScoreStarsOnTop();
     this.logTopHudLayout();
 
@@ -467,38 +567,75 @@ export class BubbleShooterController extends Component {
     });
   }
 
+  private setupBoardAreaFrame(): void {
+    this.boardBackdrop = this.createNode('BoardBackdrop', this.node);
+    this.boardBackdrop.setPosition(0, 640);
+    this.setSize(this.boardBackdrop, 1110, 1088);
+    this.decorateRoundedPanel(
+      this.boardBackdrop,
+      1110,
+      1088,
+      84,
+      new Color(255, 255, 255, 24),
+      new Color(38, 128, 183, 18),
+      new Color(255, 255, 255, 18),
+    );
+
+    const boardWindow = this.createNode('BoardWindow', this.boardBackdrop);
+    boardWindow.setPosition(0, 8);
+    this.setSize(boardWindow, 1000, 948);
+    this.drawRoundedRect(boardWindow, 1000, 948, new Color(178, 232, 255, 20), 72);
+
+    const topRail = this.createNode('BoardTopRail', this.boardBackdrop);
+    topRail.setPosition(0, 502);
+    this.setSize(topRail, 760, 34);
+    this.drawRoundedRect(topRail, 760, 34, new Color(255, 255, 255, 48), 17);
+
+    const bottomGlow = this.createNode('BoardBottomGlow', this.boardBackdrop);
+    bottomGlow.setPosition(0, -476);
+    this.setSize(bottomGlow, 700, 58);
+    this.drawRoundedRect(bottomGlow, 700, 58, new Color(255, 246, 190, 20), 29);
+  }
+
   private setupShooterArea(): void {
     this.shooterArea = this.createNode('ShooterArea', this.safeArea);
     this.shooterArea.setPosition(0, -this.canvasHeight / 2 + 800);
     this.setSize(this.shooterArea, DESIGN_WIDTH, 780);
 
-    const bottomDeck = this.createNode('BottomDeck', this.shooterArea);
-    bottomDeck.setPosition(0, -120);
-    this.setSize(bottomDeck, 1440, 620);
-    this.loadSpriteFrame('bubble_shooter_bottom_deck', (spriteFrame) => {
-      this.setSprite(bottomDeck, spriteFrame);
-    });
-
-    const shooterBase = this.createNode('ShooterAreaBase', this.shooterArea);
-    shooterBase.setPosition(0, -218);
-    this.setSize(shooterBase, 520, 170);
-    this.drawRoundedRect(shooterBase, 520, 170, new Color(21, 89, 125, 48), 72);
-
     const nextPearlGroup = this.createNode('NextPearlGroup', this.shooterArea);
-    nextPearlGroup.setPosition(-430, -155);
-    this.setSize(nextPearlGroup, 270, 290);
+    this.nextPearlGroup = nextPearlGroup;
+    nextPearlGroup.setPosition(-462, -150);
+    this.setSize(nextPearlGroup, 330, 330);
 
-    const nextPearlBackground = this.createNode('NextPearlBackground', nextPearlGroup);
-    nextPearlBackground.setPosition(Vec3.ZERO);
-    this.setSize(nextPearlBackground, 270, 270);
-    this.loadSpriteFrame('next_pearl_panel', (spriteFrame) => {
-      this.setSprite(nextPearlBackground, spriteFrame);
-    });
+    const nextPearlStandShadow = this.createNode('NextPearlStandShadow', nextPearlGroup);
+    nextPearlStandShadow.setPosition(0, -32);
+    this.setSize(nextPearlStandShadow, 278, 232);
+    this.drawRoundedRect(nextPearlStandShadow, 278, 232, new Color(18, 82, 132, 46), 60);
 
-    this.createLabel('NextPearlLabel', nextPearlGroup, 'Next', 0, 112, 34, new Color(255, 255, 255, 245), 170, 56);
+    const nextPearlStand = this.createNode('NextPearlStand', nextPearlGroup);
+    nextPearlStand.setPosition(0, -20);
+    this.setSize(nextPearlStand, 278, 232);
+    this.drawRoundedRect(nextPearlStand, 278, 232, new Color(255, 253, 235, 224), 60);
+
+    const nextPearlStandHighlight = this.createNode('NextPearlStandHighlight', nextPearlGroup);
+    nextPearlStandHighlight.setPosition(0, 62);
+    this.setSize(nextPearlStandHighlight, 220, 46);
+    this.drawRoundedRect(nextPearlStandHighlight, 220, 46, new Color(180, 230, 255, 80), 23);
+
+    const nextPearlSeat = this.createNode('NextPearlSeat', nextPearlGroup);
+    nextPearlSeat.setPosition(0, 14);
+    nextPearlSeat.setScale(1.34, 0.48, 1);
+    this.setSize(nextPearlSeat, 142, 142);
+    this.drawCircle(nextPearlSeat, 71, new Color(117, 204, 246, 78));
+
+    const nextPearlLabelBadge = this.createNode('NextPearlLabelBadge', nextPearlGroup);
+    nextPearlLabelBadge.setPosition(-70, 88);
+    this.setSize(nextPearlLabelBadge, 136, 50);
+    this.drawRoundedRect(nextPearlLabelBadge, 136, 50, new Color(255, 255, 255, 232), 25);
+    this.createLabel('NextPearlLabel', nextPearlLabelBadge, 'Next', 0, 0, 30, new Color(34, 111, 153, 255), 122, 44);
 
     this.nextPearl = this.createNode('NextPearl', nextPearlGroup);
-    this.nextPearl.setPosition(0, -10);
+    this.nextPearl.setPosition(0, 10);
     this.setSize(this.nextPearl, NEXT_PEARL_FINAL_SIZE, NEXT_PEARL_FINAL_SIZE);
     this.logPearlNodeDebug(this.nextPearl);
     this.nextPearlSprite = this.createLauncherPearlRender(
@@ -509,13 +646,45 @@ export class BubbleShooterController extends Component {
     );
     this.bindNextPearlSwapInput();
 
-    const hmeeLek = this.createNode('HmeeLek', this.shooterArea);
-    hmeeLek.setPosition(0, -120);
-    this.setSize(hmeeLek, 440, 710);
-    this.createLabel('HmeeLekPlaceholderLabel', hmeeLek, 'Hmee Lek', 0, 0, 48, new Color(33, 91, 124, 255), 340, 100);
+    const nextBallsBadge = this.createNode('NextBallsBadge', nextPearlGroup);
+    nextBallsBadge.setPosition(0, -122);
+    this.setSize(nextBallsBadge, 170, 76);
+    this.drawRoundedRect(nextBallsBadge, 170, 76, new Color(255, 255, 245, 222), 38);
+
+    this.nextBallsShadowLabel = this.createLabel(
+      'NextBallsShadowLabel',
+      nextPearlGroup,
+      `${this.ballsLeft}`,
+      3,
+      -126,
+      54,
+      new Color(111, 84, 24, 190),
+      170,
+      76,
+    );
+
+    this.nextBallsLeftLabel = this.createLabel(
+      'NextBallsLeftLabel',
+      nextPearlGroup,
+      `${this.ballsLeft}`,
+      0,
+      -122,
+      54,
+      new Color(255, 229, 74, 255),
+      170,
+      76,
+    );
+
+    this.hmeeLek = this.createNode('HmeeLek', this.shooterArea);
+    this.hmeeLek.setPosition(0, -126);
+    this.hmeeLek.setScale(0.82, 0.82, 1);
+    this.setSize(this.hmeeLek, 466, 736);
+    this.createLabel('HmeeLekPlaceholderLabel', this.hmeeLek, 'Hmee Lek', 0, 0, 48, new Color(33, 91, 124, 255), 340, 100);
     this.loadSpriteFrame('hmee_lek_shooter_empty', (spriteFrame) => {
-      hmeeLek.removeAllChildren();
-      this.setSprite(hmeeLek, spriteFrame);
+      this.hmeeLek?.removeAllChildren();
+      if (this.hmeeLek) {
+        this.setSprite(this.hmeeLek, spriteFrame);
+      }
     });
 
     this.currentPearl = this.createNode('CurrentPearl', this.shooterArea);
@@ -539,16 +708,6 @@ export class BubbleShooterController extends Component {
     console.log('[BubbleShooter] setupShooterArea complete');
   }
 
-  private setupBottomHUD(): void {
-    this.bottomHud = this.createNode('BottomHUD', this.safeArea);
-    this.bottomHud.setPosition(0, -this.canvasHeight / 2 + 1130);
-    this.setSize(this.bottomHud, DESIGN_WIDTH, 150);
-    this.createBar('ShotsRemainingBackground', this.bottomHud, 0, 0, 480, 64, new Color(30, 93, 130, 135), 28);
-    this.shotsRemainingLabel = this.createLabel('ShotsRemainingLabel', this.bottomHud, `บอลคงเหลือ ${this.ballsLeft} ลูก`, 0, 0, 44, new Color(255, 255, 255, 255), 680, 78);
-
-    console.log('[BubbleShooter] setupBottomHUD complete');
-  }
-
   private setupResultPanel(): void {
     const previousOverlay = this.node.getChildByName('ResultOverlay');
     if (previousOverlay) {
@@ -560,35 +719,84 @@ export class BubbleShooterController extends Component {
     this.resultOverlay.setPosition(Vec3.ZERO);
     this.setSize(this.resultOverlay, this.canvasWidth, this.canvasHeight);
     this.addFullStretchWidget(this.resultOverlay);
-    this.drawRoundedRect(this.resultOverlay, this.canvasWidth, this.canvasHeight, new Color(8, 27, 48, 105), 0);
+    this.drawRoundedRect(this.resultOverlay, this.canvasWidth, this.canvasHeight, new Color(7, 28, 48, 150), 0);
     this.resultOverlay.addComponent(BlockInputEvents);
     this.resultOverlay.active = false;
 
     this.resultPanel = this.createNode('ResultPanel', this.node);
-    this.resultPanel.setPosition(0, 180);
-    this.setSize(this.resultPanel, 1080, 820);
-    this.drawRoundedRect(this.resultPanel, 1080, 820, new Color(18, 78, 122, 245), 56);
+    this.resultPanel.setPosition(0, 120);
+    this.setSize(this.resultPanel, 1080, 940);
+    this.decorateRoundedPanel(
+      this.resultPanel,
+      1080,
+      940,
+      72,
+      new Color(255, 255, 255, 248),
+      new Color(6, 42, 74, 124),
+      new Color(255, 241, 166, 42),
+    );
     this.resultPanel.addComponent(BlockInputEvents);
 
-    const headerGlow = this.createNode('ResultHeaderGlow', this.resultPanel);
-    headerGlow.setPosition(0, 250);
-    this.setSize(headerGlow, 900, 190);
-    this.drawRoundedRect(headerGlow, 900, 190, new Color(255, 255, 255, 26), 70);
+    const titleRibbon = this.createNode('ResultTitleRibbon', this.resultPanel);
+    titleRibbon.setPosition(0, 334);
+    this.setSize(titleRibbon, 760, 156);
+    this.decorateRoundedPanel(
+      titleRibbon,
+      760,
+      156,
+      66,
+      new Color(50, 151, 207, 238),
+      new Color(12, 62, 101, 70),
+      new Color(255, 255, 255, 54),
+    );
 
     const scoreBackplate = this.createNode('ResultScoreBackplate', this.resultPanel);
-    scoreBackplate.setPosition(0, -25);
-    this.setSize(scoreBackplate, 820, 245);
-    this.drawRoundedRect(scoreBackplate, 820, 245, new Color(9, 47, 82, 96), 42);
+    scoreBackplate.setPosition(0, 20);
+    this.setSize(scoreBackplate, 840, 318);
+    this.decorateRoundedPanel(
+      scoreBackplate,
+      840,
+      318,
+      54,
+      new Color(235, 249, 255, 244),
+      new Color(14, 73, 112, 48),
+      new Color(255, 255, 255, 74),
+    );
 
-    this.resultTitleLabel = this.createLabel('ResultTitleLabel', this.resultPanel, 'WIN', 0, 292, 112, new Color(255, 255, 255, 255), 760, 132);
-    this.resultStarsLabel = this.createLabel('ResultStarsLabel', this.resultPanel, '☆☆☆', 0, 165, 104, new Color(255, 241, 120, 255), 660, 118);
-    this.resultScoreLabel = this.createLabel('ResultScoreLabel', this.resultPanel, 'คะแนน 0', 0, 40, 60, new Color(255, 238, 138, 255), 820, 86);
-    this.resultBestScoreLabel = this.createLabel('ResultBestScoreLabel', this.resultPanel, 'คะแนนสูงสุด 0', 0, -42, 50, new Color(255, 255, 255, 236), 820, 76);
-    this.resultRemainingBallsLabel = this.createLabel('ResultRemainingBallsLabel', this.resultPanel, 'เหลือลูกบอล 0 ลูก', 0, -118, 44, new Color(209, 239, 255, 245), 820, 70);
+    const scoreGoldPill = this.createNode('ResultScoreGoldPill', scoreBackplate);
+    scoreGoldPill.setPosition(0, 72);
+    this.setSize(scoreGoldPill, 620, 98);
+    this.drawRoundedRect(scoreGoldPill, 620, 98, new Color(255, 224, 88, 232), 44);
 
-    const retryButton = this.createResultButton('RetryButton', this.resultPanel, -360, -292, 'เล่นใหม่');
-    const stageButton = this.createResultButton('ResultStageSelectButton', this.resultPanel, 0, -292, 'เลือกด่าน');
-    this.resultNextButton = this.createResultButton('NextStageButton', this.resultPanel, 360, -292, 'ด่านต่อไป');
+    const bestScorePill = this.createNode('ResultBestScorePill', scoreBackplate);
+    bestScorePill.setPosition(0, -32);
+    this.setSize(bestScorePill, 660, 78);
+    this.drawRoundedRect(bestScorePill, 660, 78, new Color(255, 255, 255, 212), 36);
+
+    const remainingPill = this.createNode('ResultRemainingPill', scoreBackplate);
+    remainingPill.setPosition(0, -118);
+    this.setSize(remainingPill, 620, 68);
+    this.drawRoundedRect(remainingPill, 620, 68, new Color(101, 182, 220, 116), 32);
+
+    this.resultTitleLabel = this.createLabel('ResultTitleLabel', titleRibbon, 'WIN', 0, 2, 104, new Color(255, 255, 255, 255), 680, 130);
+    this.resultStarsLabel = this.createLabel('ResultStarsLabel', this.resultPanel, '☆☆☆', 0, 210, 108, new Color(255, 219, 68, 255), 690, 128);
+    this.resultScoreLabel = this.createLabel('ResultScoreLabel', scoreBackplate, 'คะแนน 0', 0, 72, 58, new Color(104, 73, 10, 255), 600, 88);
+    this.resultBestScoreLabel = this.createLabel('ResultBestScoreLabel', scoreBackplate, 'คะแนนสูงสุด 0', 0, -32, 46, new Color(26, 88, 128, 255), 620, 72);
+    this.resultRemainingBallsLabel = this.createLabel(
+      'ResultRemainingBallsLabel',
+      scoreBackplate,
+      'เหลือลูกบอล 0 ลูก',
+      0,
+      -118,
+      40,
+      new Color(255, 255, 255, 248),
+      580,
+      64,
+    );
+
+    const retryButton = this.createResultButton('RetryButton', this.resultPanel, -350, -352, 'เล่นใหม่');
+    const stageButton = this.createResultButton('ResultStageSelectButton', this.resultPanel, 0, -352, 'เลือกด่าน');
+    this.resultNextButton = this.createResultButton('NextStageButton', this.resultPanel, 350, -352, 'ด่านต่อไป');
 
     retryButton.on(Button.EventType.CLICK, this.retryStage, this);
     stageButton.on(Button.EventType.CLICK, this.backToStageSelect, this);
@@ -618,29 +826,37 @@ export class BubbleShooterController extends Component {
 
   private applyLayoutZOrder(): void {
     this.node.getChildByName('Background')?.setSiblingIndex(0);
-    this.safeArea.setSiblingIndex(1);
+    this.boardBackdrop?.setSiblingIndex(1);
     this.ensurePearlBoardVisible();
+    this.safeArea.setSiblingIndex(3);
     this.shooterArea.setSiblingIndex(1);
-    this.bottomHud.setSiblingIndex(2);
     this.topHud.setSiblingIndex(3);
 
-    const bottomDeck = this.shooterArea.getChildByName('BottomDeck');
-    const shooterBase = this.shooterArea.getChildByName('ShooterAreaBase');
     const hmeeLek = this.shooterArea.getChildByName('HmeeLek');
     const currentPearl = this.shooterArea.getChildByName('CurrentPearl');
     const nextPearlGroup = this.shooterArea.getChildByName('NextPearlGroup');
-    bottomDeck?.setSiblingIndex(0);
-    shooterBase?.setSiblingIndex(1);
-    hmeeLek?.setSiblingIndex(2);
-    currentPearl?.setSiblingIndex(3);
-    nextPearlGroup?.setSiblingIndex(4);
+    hmeeLek?.setSiblingIndex(0);
+    currentPearl?.setSiblingIndex(1);
+    nextPearlGroup?.setSiblingIndex(2);
 
-    const nextPearlBackground = nextPearlGroup?.getChildByName('NextPearlBackground');
+    const nextPearlStandShadow = nextPearlGroup?.getChildByName('NextPearlStandShadow');
+    const nextPearlStand = nextPearlGroup?.getChildByName('NextPearlStand');
+    const nextPearlStandHighlight = nextPearlGroup?.getChildByName('NextPearlStandHighlight');
+    const nextPearlSeat = nextPearlGroup?.getChildByName('NextPearlSeat');
+    const nextPearlLabelBadge = nextPearlGroup?.getChildByName('NextPearlLabelBadge');
     const nextPearl = nextPearlGroup?.getChildByName('NextPearl');
-    const nextPearlLabel = nextPearlGroup?.getChildByName('NextPearlLabel');
-    nextPearlBackground?.setSiblingIndex(0);
-    nextPearl?.setSiblingIndex(1);
-    nextPearlLabel?.setSiblingIndex(2);
+    const nextBallsBadge = nextPearlGroup?.getChildByName('NextBallsBadge');
+    const nextBallsShadowLabel = nextPearlGroup?.getChildByName('NextBallsShadowLabel');
+    const nextBallsLeftLabel = nextPearlGroup?.getChildByName('NextBallsLeftLabel');
+    nextPearlStandShadow?.setSiblingIndex(0);
+    nextPearlStand?.setSiblingIndex(1);
+    nextPearlStandHighlight?.setSiblingIndex(2);
+    nextPearlSeat?.setSiblingIndex(3);
+    nextPearl?.setSiblingIndex(4);
+    nextPearlLabelBadge?.setSiblingIndex(5);
+    nextBallsBadge?.setSiblingIndex(6);
+    nextBallsShadowLabel?.setSiblingIndex(7);
+    nextBallsLeftLabel?.setSiblingIndex(8);
     this.aimGuide?.setSiblingIndex(this.node.children.length - 1);
     this.resultPanel?.setSiblingIndex(this.node.children.length - 1);
     this.pausePanel?.setSiblingIndex(this.node.children.length - 1);
@@ -652,15 +868,15 @@ export class BubbleShooterController extends Component {
     }
 
     this.pearlBoard.active = true;
-    this.pearlBoard.setSiblingIndex(this.node.children.length - 1);
+    this.pearlBoard.setSiblingIndex((this.boardBackdrop?.getSiblingIndex() ?? 0) + 1);
   }
 
   public updateScoreProgress(score: number): void {
     const normalizedProgress = this.getScoreProgress(score);
     const fillWidth = this.scoreBarWidth * normalizedProgress;
-    this.scoreFill.setPosition(-this.scoreBarWidth / 2 + fillWidth / 2, -24);
+    this.scoreFill.setPosition(-this.scoreBarWidth / 2 + fillWidth / 2, -34);
     this.setSize(this.scoreFill, fillWidth, this.scoreBarHeight);
-    this.drawRoundedRect(this.scoreFill, fillWidth, this.scoreBarHeight, new Color(255, 222, 91, 245), 19);
+    this.drawRoundedRect(this.scoreFill, fillWidth, this.scoreBarHeight, new Color(255, 220, 78, 248), 19);
     this.updateStars(score);
   }
 
@@ -869,8 +1085,11 @@ export class BubbleShooterController extends Component {
       this.targetValueLabel.string = `เหลือ ${this.targetLeft} ลูก`;
     }
 
-    if (this.shotsRemainingLabel) {
-      this.shotsRemainingLabel.string = `บอลคงเหลือ ${this.ballsLeft} ลูก`;
+    if (this.nextBallsLeftLabel) {
+      this.nextBallsLeftLabel.string = `${this.ballsLeft}`;
+    }
+    if (this.nextBallsShadowLabel) {
+      this.nextBallsShadowLabel.string = `${this.ballsLeft}`;
     }
 
     this.updateScoreProgress(this.score);
@@ -1022,9 +1241,7 @@ export class BubbleShooterController extends Component {
       this.currentPearl.active = false;
     }
 
-    if (this.nextPearl) {
-      this.nextPearl.active = false;
-    }
+    this.prepareGameplayVisualsForResult();
 
     this.showResultPanel(finalState);
     console.log(`[BubbleShooter] Game ${finalState}`);
@@ -1070,6 +1287,7 @@ export class BubbleShooterController extends Component {
     }
 
     this.setGameplayHudVisibleForResult(false);
+    this.prepareGameplayVisualsForResult();
     if (this.resultOverlay) {
       this.resultOverlay.active = true;
       this.resultOverlay.setSiblingIndex(this.node.children.length - 1);
@@ -1101,6 +1319,10 @@ export class BubbleShooterController extends Component {
     if (this.resultRemainingBallsLabel) {
       const shouldShowRemainingBalls = finalState === BubbleShooterGameState.Win;
       this.resultRemainingBallsLabel.node.active = shouldShowRemainingBalls;
+      const remainingPill = this.resultPanel?.getChildByName('ResultScoreBackplate')?.getChildByName('ResultRemainingPill');
+      if (remainingPill) {
+        remainingPill.active = shouldShowRemainingBalls;
+      }
       this.resultRemainingBallsLabel.string = `เหลือลูกบอล ${this.ballsLeft} ลูก`;
     }
 
@@ -1116,12 +1338,11 @@ export class BubbleShooterController extends Component {
   }
 
   private setGameplayHudVisibleForResult(visible: boolean): void {
-    if (this.bottomHud) {
-      this.bottomHud.active = visible;
+    if (this.nextBallsLeftLabel) {
+      this.nextBallsLeftLabel.node.active = visible;
     }
-
-    if (this.shotsRemainingLabel) {
-      this.shotsRemainingLabel.node.active = visible;
+    if (this.nextBallsShadowLabel) {
+      this.nextBallsShadowLabel.node.active = visible;
     }
   }
 
@@ -1130,17 +1351,33 @@ export class BubbleShooterController extends Component {
       return;
     }
 
-    this.drawRoundedRect(
-      this.resultNextButton,
-      320,
-      112,
-      isEnabled ? new Color(255, 255, 255, 242) : new Color(197, 218, 232, 180),
-      34,
-    );
+    this.setResultButtonFillColor(this.resultNextButton, isEnabled ? new Color(255, 255, 246, 255) : new Color(217, 229, 236, 255));
 
     const label = this.resultNextButton.getChildByName('NextStageButtonLabel')?.getComponent(Label);
     if (label) {
-      label.color = isEnabled ? new Color(25, 83, 122, 255) : new Color(83, 117, 139, 230);
+      label.color = isEnabled ? new Color(12, 74, 116, 255) : new Color(65, 91, 108, 255);
+    }
+  }
+
+  private prepareGameplayVisualsForResult(): void {
+    this.currentPearl?.setSiblingIndex(1);
+    if (this.currentPearl) {
+      this.currentPearl.active = false;
+    }
+    if (this.activeProjectile) {
+      this.activeProjectile.active = false;
+    }
+    if (this.nextPearlGroup) {
+      this.nextPearlGroup.active = false;
+    } else {
+      const nextPearlGroup = this.shooterArea?.getChildByName('NextPearlGroup');
+      if (nextPearlGroup) {
+        nextPearlGroup.active = false;
+      }
+    }
+    if (this.hmeeLek) {
+      const opacity = this.hmeeLek.getComponent(UIOpacity) ?? this.hmeeLek.addComponent(UIOpacity);
+      opacity.opacity = 96;
     }
   }
 
@@ -1741,12 +1978,20 @@ export class BubbleShooterController extends Component {
   private createIconButton(nodeName: string, parent: Node, x: number, y: number, assetName: string, fallbackText: string): Node {
     const button = this.createNode(nodeName, parent);
     button.setPosition(x, y);
-    this.setSize(button, 148, 148);
-    this.drawRoundedRect(button, 148, 148, new Color(255, 255, 255, 235), 36);
-    this.createLabel(`${nodeName}FallbackLabel`, button, fallbackText, 0, 0, 34, new Color(30, 90, 130, 255), 148, 72);
+    this.setSize(button, 150, 150);
+    this.decorateRoundedPanel(
+      button,
+      150,
+      150,
+      56,
+      new Color(255, 255, 255, 246),
+      new Color(9, 58, 96, 90),
+      new Color(255, 237, 170, 64),
+    );
+    const fallbackLabel = this.createLabel(`${nodeName}FallbackLabel`, button, fallbackText, 0, 0, 32, new Color(30, 90, 130, 255), 132, 72);
     this.loadSpriteFrame(assetName, (spriteFrame) => {
-      button.removeAllChildren();
-      this.createSpriteVisual(`${nodeName}Icon`, button, 138, 138, spriteFrame);
+      fallbackLabel.node.active = false;
+      this.createSpriteVisual(`${nodeName}Icon`, button, 114, 114, spriteFrame);
     });
     return button;
   }
@@ -1755,19 +2000,44 @@ export class BubbleShooterController extends Component {
     const button = this.createNode(nodeName, parent);
     button.setPosition(x, y);
     this.setSize(button, 320, 112);
-    this.drawRoundedRect(button, 320, 112, new Color(255, 255, 255, 242), 34);
-    this.createLabel(`${nodeName}Label`, button, text, 0, 0, 44, new Color(25, 83, 122, 255), 292, 90);
+    const shadow = this.createNode(`${nodeName}Shadow`, button);
+    shadow.setPosition(0, -8);
+    this.setSize(shadow, 320, 112);
+    this.drawRoundedRect(shadow, 320, 112, new Color(11, 68, 106, 58), 38);
+
+    const fill = this.createNode(`${nodeName}Fill`, button);
+    fill.setPosition(Vec3.ZERO);
+    this.setSize(fill, 320, 112);
+    this.drawRoundedRect(fill, 320, 112, new Color(255, 255, 246, 255), 38);
+
+    const border = this.createNode(`${nodeName}Border`, button);
+    border.setPosition(Vec3.ZERO);
+    this.setSize(border, 320, 112);
+    this.drawRoundedRectOutline(border, 320, 112, new Color(255, 219, 102, 190), 38, 5);
+
+    const shine = this.createNode(`${nodeName}Shine`, button);
+    shine.setPosition(0, 28);
+    this.setSize(shine, 270, 32);
+    this.drawRoundedRect(shine, 270, 32, new Color(255, 233, 128, 118), 16);
+    this.createLabel(`${nodeName}Label`, button, text, 0, -2, 42, new Color(12, 74, 116, 255), 292, 88);
 
     const buttonComponent = button.addComponent(Button);
     buttonComponent.interactable = true;
     return button;
   }
 
+  private setResultButtonFillColor(button: Node, color: Color): void {
+    const fill = button.getChildByName(`${button.name}Fill`);
+    if (fill) {
+      this.drawRoundedRect(fill, 320, 112, color, 38);
+    }
+  }
+
   private createPauseButton(nodeName: string, parent: Node, x: number, y: number, text: string): Node {
     const button = this.createNode(nodeName, parent);
     button.setPosition(x, y);
     this.setSize(button, 520, 100);
-    this.drawRoundedRect(button, 520, 100, new Color(255, 255, 255, 240), 30);
+    this.drawRoundedRect(button, 520, 100, new Color(255, 255, 255, 244), 34);
     this.createLabel(`${nodeName}Label`, button, text, 0, 0, 42, new Color(24, 82, 122, 255), 460, 82);
 
     const buttonComponent = button.addComponent(Button);
@@ -1961,6 +2231,31 @@ export class BubbleShooterController extends Component {
     widget.right = 64;
   }
 
+  private decorateRoundedPanel(
+    node: Node,
+    width: number,
+    height: number,
+    radius: number,
+    fillColor: Color,
+    shadowColor: Color,
+    highlightColor: Color,
+  ): void {
+    const shadow = this.createNode(`${node.name}Shadow`, node);
+    shadow.setPosition(0, -14);
+    this.setSize(shadow, width, height);
+    this.drawRoundedRect(shadow, width, height, shadowColor, radius);
+
+    const fill = this.createNode(`${node.name}Fill`, node);
+    fill.setPosition(Vec3.ZERO);
+    this.setSize(fill, width, height);
+    this.drawRoundedRect(fill, width, height, fillColor, radius);
+
+    const highlight = this.createNode(`${node.name}Highlight`, node);
+    highlight.setPosition(0, height * 0.24);
+    this.setSize(highlight, width * 0.86, height * 0.2);
+    this.drawRoundedRect(highlight, width * 0.86, height * 0.2, highlightColor, Math.min(radius, height * 0.1));
+  }
+
   private drawRoundedRect(node: Node, width: number, height: number, color: Color, radius: number): void {
     const graphics = node.getComponent(Graphics) ?? node.addComponent(Graphics);
     graphics.clear();
@@ -1976,6 +2271,21 @@ export class BubbleShooterController extends Component {
       graphics.rect(-width / 2, -height / 2, width, height);
     }
     graphics.fill();
+  }
+
+  private drawRoundedRectOutline(node: Node, width: number, height: number, color: Color, radius: number, lineWidth: number): void {
+    const graphics = node.getComponent(Graphics) ?? node.addComponent(Graphics);
+    graphics.clear();
+    if (width <= 0 || height <= 0) {
+      return;
+    }
+
+    graphics.strokeColor = color;
+    graphics.lineWidth = lineWidth;
+    const inset = lineWidth / 2;
+    const resolvedRadius = Math.min(radius, width / 2, height / 2);
+    graphics.roundRect(-width / 2 + inset, -height / 2 + inset, width - lineWidth, height - lineWidth, resolvedRadius);
+    graphics.stroke();
   }
 
   private drawCircle(node: Node, radius: number, color: Color): void {
