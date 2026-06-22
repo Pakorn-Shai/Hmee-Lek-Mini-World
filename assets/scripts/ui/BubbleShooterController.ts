@@ -103,6 +103,10 @@ export class BubbleShooterController extends Component {
   private resultScoreLabel?: Label;
   private resultBestScoreLabel?: Label;
   private resultRemainingBallsLabel?: Label;
+  private resultRewardLabel?: Label;
+  private resultHeartLabel?: Label;
+  private resultEconomyIconNode?: Node;
+  private resultEconomyIcon?: Sprite;
   private resultStarsLabel?: Label;
   private resultNextButton?: Node;
   private pausePanel?: Node;
@@ -137,6 +141,7 @@ export class BubbleShooterController extends Component {
   private initialBoardPearlCount = 0;
   private targetLeft = 0;
   private ballsLeft = 0;
+  private lastResultCoinReward = 0;
 
   private get currentStageConfig() {
     return getBubbleStageConfig(BubbleStageSelection.selectedStage) ?? getBubbleStageConfig(1);
@@ -221,6 +226,7 @@ export class BubbleShooterController extends Component {
     this.scoreTweenState.value = 0;
     this.scoreStarFilledStates = [false, false, false];
     this.clearedCount = 0;
+    this.lastResultCoinReward = 0;
     this.targetLeft = stageConfig.clearTarget;
     this.ballsLeft = stageConfig.moveLimit;
     this.gameState = BubbleShooterGameState.Ready;
@@ -282,7 +288,7 @@ export class BubbleShooterController extends Component {
     ];
 
     for (const child of [...this.node.children]) {
-      if (generatedNodeNames.includes(child.name)) {
+      if (generatedNodeNames.indexOf(child.name) >= 0) {
         child.removeFromParent();
         child.destroy();
       }
@@ -757,12 +763,12 @@ export class BubbleShooterController extends Component {
     );
 
     const scoreBackplate = this.createNode('ResultScoreBackplate', this.resultPanel);
-    scoreBackplate.setPosition(0, 20);
-    this.setSize(scoreBackplate, 840, 318);
+    scoreBackplate.setPosition(0, 28);
+    this.setSize(scoreBackplate, 840, 390);
     this.decorateRoundedPanel(
       scoreBackplate,
       840,
-      318,
+      390,
       54,
       new Color(235, 249, 255, 244),
       new Color(14, 73, 112, 48),
@@ -780,9 +786,21 @@ export class BubbleShooterController extends Component {
     this.drawRoundedRect(bestScorePill, 660, 78, new Color(255, 255, 255, 212), 36);
 
     const remainingPill = this.createNode('ResultRemainingPill', scoreBackplate);
-    remainingPill.setPosition(0, -118);
+    remainingPill.setPosition(0, -104);
     this.setSize(remainingPill, 620, 68);
     this.drawRoundedRect(remainingPill, 620, 68, new Color(101, 182, 220, 116), 32);
+
+    const economyPill = this.createNode('ResultEconomyPill', scoreBackplate);
+    economyPill.setPosition(0, -174);
+    this.setSize(economyPill, 620, 68);
+    this.drawRoundedRect(economyPill, 620, 68, new Color(255, 235, 148, 132), 32);
+
+    this.resultEconomyIconNode = this.createNode('ResultEconomyIcon', scoreBackplate);
+    this.resultEconomyIconNode.setPosition(-246, -174);
+    this.setSize(this.resultEconomyIconNode, 74, 74);
+    this.resultEconomyIcon = this.resultEconomyIconNode.addComponent(Sprite);
+    this.resultEconomyIcon.sizeMode = Sprite.SizeMode.CUSTOM;
+    this.resultEconomyIcon.type = Sprite.Type.SIMPLE;
 
     this.resultTitleLabel = this.createLabel('ResultTitleLabel', titleRibbon, 'WIN', 0, 2, 104, new Color(255, 255, 255, 255), 680, 130);
     this.resultStarsLabel = this.createLabel('ResultStarsLabel', this.resultPanel, '☆☆☆', 0, 210, 108, new Color(255, 219, 68, 255), 690, 128);
@@ -793,10 +811,32 @@ export class BubbleShooterController extends Component {
       scoreBackplate,
       'เหลือลูกบอล 0 ลูก',
       0,
-      -118,
+      -104,
       40,
       new Color(255, 255, 255, 248),
       580,
+      64,
+    );
+    this.resultRewardLabel = this.createLabel(
+      'ResultRewardLabel',
+      scoreBackplate,
+      'Coin +0',
+      38,
+      -174,
+      38,
+      new Color(104, 73, 10, 255),
+      500,
+      64,
+    );
+    this.resultHeartLabel = this.createLabel(
+      'ResultHeartLabel',
+      scoreBackplate,
+      'x5',
+      38,
+      -174,
+      38,
+      new Color(104, 73, 10, 255),
+      500,
       64,
     );
 
@@ -1067,12 +1107,24 @@ export class BubbleShooterController extends Component {
   }
 
   private retryStage(): void {
+    if (!SaveManager.canPlayStage()) {
+      console.warn('[BubbleShooter] Retry blocked: no hearts left.');
+      director.loadScene('StageSelect');
+      return;
+    }
+
     director.loadScene('BubbleShooter');
   }
 
   private openNextStage(): void {
     const nextStageId = this.getResolvedStageConfig().stageId + 1;
     if (!getBubbleStageConfig(nextStageId)) {
+      return;
+    }
+
+    if (!SaveManager.canPlayStage()) {
+      console.warn('[BubbleShooter] Next stage blocked: no hearts left.');
+      director.loadScene('StageSelect');
       return;
     }
 
@@ -1193,7 +1245,7 @@ export class BubbleShooterController extends Component {
     }
 
     const currentColor = slot === 'current' ? this.currentPearlColor : this.nextPearlColor;
-    if (availableColors.includes(currentColor)) {
+    if (availableColors.indexOf(currentColor) >= 0) {
       return;
     }
 
@@ -1233,7 +1285,10 @@ export class BubbleShooterController extends Component {
 
     if (finalState === BubbleShooterGameState.Win) {
       this.applyWinScoreBonus();
+      this.grantWinCoins();
       this.saveWinProgress();
+    } else {
+      SaveManager.consumeHeart();
     }
 
     this.gameState = finalState;
@@ -1287,6 +1342,27 @@ export class BubbleShooterController extends Component {
     });
   }
 
+  private grantWinCoins(): void {
+    const stageConfig = this.getResolvedStageConfig();
+    const stageKey = `${stageConfig.stageId}`;
+    const wasCleared = SaveManager.getData().minigames.bubbleShooter.cleared[stageKey] ?? false;
+    const reward = Math.max(0, Math.floor(stageConfig.coinReward ?? 0));
+    const firstClearBonus = wasCleared ? 0 : Math.max(0, Math.floor(stageConfig.firstClearBonus ?? 0));
+    const totalReward = reward + firstClearBonus;
+    this.lastResultCoinReward = totalReward;
+
+    if (totalReward > 0) {
+      SaveManager.addCoins(totalReward);
+    }
+
+    console.log('[BubbleShooter] coin reward granted', {
+      stageId: stageConfig.stageId,
+      reward,
+      firstClearBonus,
+      totalReward,
+    });
+  }
+
   private showResultPanel(finalState: BubbleShooterGameState.Win | BubbleShooterGameState.Lose): void {
     if (!this.resultPanel) {
       return;
@@ -1330,6 +1406,22 @@ export class BubbleShooterController extends Component {
         remainingPill.active = shouldShowRemainingBalls;
       }
       this.resultRemainingBallsLabel.string = `เหลือลูกบอล ${this.ballsLeft} ลูก`;
+    }
+
+    const saveData = SaveManager.regenerateHearts();
+
+    if (this.resultRewardLabel) {
+      this.resultRewardLabel.node.active = finalState === BubbleShooterGameState.Win;
+      this.resultRewardLabel.string = `Coin +${this.lastResultCoinReward}`;
+    }
+    if (this.resultHeartLabel) {
+      this.resultHeartLabel.node.active = finalState === BubbleShooterGameState.Lose;
+      this.resultHeartLabel.string = `x${saveData.player.hearts}`;
+    }
+    this.updateResultEconomyIcon(finalState);
+    const economyPill = this.resultPanel?.getChildByName('ResultScoreBackplate')?.getChildByName('ResultEconomyPill');
+    if (economyPill) {
+      economyPill.active = true;
     }
 
     if (this.resultNextButton) {
@@ -1396,6 +1488,22 @@ export class BubbleShooterController extends Component {
     tween(this.resultPanel)
       .to(0.18, { scale: new Vec3(1, 1, 1) })
       .start();
+  }
+
+  private updateResultEconomyIcon(finalState: BubbleShooterGameState.Win | BubbleShooterGameState.Lose): void {
+    if (!this.resultEconomyIconNode || !this.resultEconomyIcon) {
+      return;
+    }
+
+    this.resultEconomyIconNode.active = true;
+    const assetName = finalState === BubbleShooterGameState.Win ? 'reward_coin_badge' : 'icon_heart';
+    this.loadCommonSpriteFrame(assetName, (spriteFrame) => {
+      if (!this.resultEconomyIconNode?.isValid || !this.resultEconomyIcon) {
+        return;
+      }
+
+      this.resultEconomyIcon.spriteFrame = spriteFrame;
+    });
   }
 
   private prepareLauncherPearls(): void {
@@ -2315,6 +2423,19 @@ export class BubbleShooterController extends Component {
 
   private loadSpriteFrame(assetName: string, onLoaded: (spriteFrame: SpriteFrame) => void, onFailed?: () => void): void {
     const resourcePath = `${RESOURCE_ROOT}/${assetName}/spriteFrame`;
+    resources.load(resourcePath, SpriteFrame, (error, spriteFrame) => {
+      if (error || !spriteFrame) {
+        console.error(`[BubbleShooterController] SpriteFrame not found: ${resourcePath}`, error);
+        onFailed?.();
+        return;
+      }
+
+      onLoaded(spriteFrame);
+    });
+  }
+
+  private loadCommonSpriteFrame(assetName: string, onLoaded: (spriteFrame: SpriteFrame) => void, onFailed?: () => void): void {
+    const resourcePath = `ui/common/${assetName}/spriteFrame`;
     resources.load(resourcePath, SpriteFrame, (error, spriteFrame) => {
       if (error || !spriteFrame) {
         console.error(`[BubbleShooterController] SpriteFrame not found: ${resourcePath}`, error);

@@ -1,4 +1,4 @@
-import { _decorator, Button, Color, Component, Label, Node, UITransform } from 'cc';
+import { _decorator, Button, Color, Component, Label, Layers, Node, resources, Sprite, SpriteFrame, UITransform } from 'cc';
 import { BubbleStageSelection, getBubbleStageConfig } from '../data/BubbleStageData';
 import { SceneRouter } from '../core/SceneRouter';
 import { SaveManager } from '../core/SaveManager';
@@ -7,7 +7,15 @@ const { ccclass } = _decorator;
 
 @ccclass('StageSelectController')
 export class StageSelectController extends Component {
+  private heartLabel?: Label;
+  private coinLabel?: Label;
+  private heartWarningNode?: Node;
+  private heartWarningLabel?: Label;
+
   protected onLoad(): void {
+    this.setupEconomyLabels();
+    this.refreshEconomyLabels();
+    this.setupHeartWarning();
     this.bindStageButtons();
     this.bindBackButton();
   }
@@ -25,6 +33,13 @@ export class StageSelectController extends Component {
         unlockedStage: progress.unlockedStage,
         hasStageConfig: stageConfig !== undefined,
       });
+      return;
+    }
+
+    if (!SaveManager.canPlayStage()) {
+      this.refreshEconomyLabels();
+      this.showHeartWarning();
+      console.warn('[StageSelectController] Cannot play stage: no hearts left.');
       return;
     }
 
@@ -46,7 +61,7 @@ export class StageSelectController extends Component {
   }
 
   private bindStageButtons(): void {
-    const progress = SaveManager.getData().minigames.bubbleShooter;
+    const progress = SaveManager.regenerateHearts().minigames.bubbleShooter;
 
     for (let stageId = 1; stageId <= 10; stageId += 1) {
       const stageNodeName = `Stage${this.formatStageNumber(stageId)}`;
@@ -111,6 +126,153 @@ export class StageSelectController extends Component {
 
     label.string = isCleared ? `${this.formatStars(stars)} ผ่านแล้ว` : this.formatStars(stars);
     label.color = isCleared ? new Color(255, 241, 120, 255) : new Color(255, 255, 255, 210);
+  }
+
+  private setupEconomyLabels(): void {
+    this.heartLabel = this.findNodeByName(this.node, 'HeartLabel')?.getComponent(Label) ?? undefined;
+    this.coinLabel = this.findNodeByName(this.node, 'CoinLabel')?.getComponent(Label) ?? undefined;
+
+    if (!this.heartLabel) {
+      this.heartLabel = this.createEconomyLabel('HeartLabel', -170, 520);
+    }
+
+    if (!this.coinLabel) {
+      this.coinLabel = this.createEconomyLabel('CoinLabel', 170, 520);
+    }
+  }
+
+  private refreshEconomyLabels(): void {
+    const saveData = SaveManager.regenerateHearts();
+    if (this.heartLabel) {
+      this.heartLabel.string = `x${saveData.player.hearts}`;
+    }
+    if (this.coinLabel) {
+      this.coinLabel.string = `x${saveData.player.coins}`;
+    }
+  }
+
+  private createEconomyLabel(nodeName: string, x: number, y: number): Label {
+    const badgeNode = new Node(`${nodeName}Badge`);
+    badgeNode.layer = Layers.Enum.UI_2D;
+    badgeNode.setParent(this.node);
+    badgeNode.setPosition(x, y);
+    const badgeTransform = badgeNode.addComponent(UITransform);
+    badgeTransform.setContentSize(260, 84);
+
+    this.createEconomyIcon(nodeName, badgeNode);
+
+    const labelNode = new Node(nodeName);
+    labelNode.layer = Layers.Enum.UI_2D;
+    labelNode.setParent(badgeNode);
+    labelNode.setPosition(48, 0);
+
+    const transform = labelNode.addComponent(UITransform);
+    transform.setContentSize(160, 72);
+
+    const label = labelNode.addComponent(Label);
+    label.fontSize = 34;
+    label.lineHeight = 42;
+    label.color = new Color(255, 255, 255, 255);
+    label.horizontalAlign = Label.HorizontalAlign.CENTER;
+    label.verticalAlign = Label.VerticalAlign.CENTER;
+    return label;
+  }
+
+  private createEconomyIcon(nodeName: string, parent: Node): void {
+    const iconNode = new Node(`${nodeName}Icon`);
+    iconNode.layer = Layers.Enum.UI_2D;
+    iconNode.setParent(parent);
+    iconNode.setPosition(-74, 0);
+    const transform = iconNode.addComponent(UITransform);
+    transform.setContentSize(62, 62);
+
+    const sprite = iconNode.addComponent(Sprite);
+    sprite.sizeMode = Sprite.SizeMode.CUSTOM;
+    sprite.type = Sprite.Type.SIMPLE;
+
+    const assetName = nodeName === 'HeartLabel' ? 'icon_heart' : 'icon_coin';
+    this.loadCommonSpriteFrame(assetName, (spriteFrame) => {
+      if (!iconNode.isValid) {
+        return;
+      }
+
+      sprite.spriteFrame = spriteFrame;
+    });
+  }
+
+  private setupHeartWarning(): void {
+    this.heartWarningNode = this.findNodeByName(this.node, 'HeartWarningPanel') ?? undefined;
+    this.heartWarningLabel = this.findNodeByName(this.node, 'HeartWarningLabel')?.getComponent(Label) ?? undefined;
+
+    if (!this.heartWarningNode) {
+      this.heartWarningNode = new Node('HeartWarningPanel');
+      this.heartWarningNode.layer = Layers.Enum.UI_2D;
+      this.heartWarningNode.setParent(this.node);
+      this.heartWarningNode.setPosition(0, 130);
+
+      const panelTransform = this.heartWarningNode.addComponent(UITransform);
+      panelTransform.setContentSize(620, 210);
+
+      const panelSprite = this.heartWarningNode.addComponent(Sprite);
+      panelSprite.sizeMode = Sprite.SizeMode.CUSTOM;
+      panelSprite.type = Sprite.Type.SIMPLE;
+      this.loadCommonSpriteFrame('popup_small_panel', (spriteFrame) => {
+        if (!this.heartWarningNode?.isValid) {
+          return;
+        }
+
+        panelSprite.spriteFrame = spriteFrame;
+      });
+    }
+
+    if (!this.heartWarningLabel) {
+      const labelNode = new Node('HeartWarningLabel');
+      labelNode.layer = Layers.Enum.UI_2D;
+      labelNode.setParent(this.heartWarningNode);
+      labelNode.setPosition(0, 0);
+
+      const labelTransform = labelNode.addComponent(UITransform);
+      labelTransform.setContentSize(560, 120);
+
+      this.heartWarningLabel = labelNode.addComponent(Label);
+      this.heartWarningLabel.fontSize = 38;
+      this.heartWarningLabel.lineHeight = 48;
+      this.heartWarningLabel.color = new Color(104, 73, 10, 255);
+      this.heartWarningLabel.horizontalAlign = Label.HorizontalAlign.CENTER;
+      this.heartWarningLabel.verticalAlign = Label.VerticalAlign.CENTER;
+    }
+
+    this.heartWarningLabel.string = 'หัวใจหมด รอฟื้นฟู';
+    this.heartWarningNode.active = false;
+  }
+
+  private showHeartWarning(): void {
+    if (!this.heartWarningNode) {
+      return;
+    }
+
+    this.heartWarningNode.active = true;
+    this.heartWarningNode.setSiblingIndex(this.node.children.length - 1);
+    this.unschedule(this.hideHeartWarning);
+    this.scheduleOnce(this.hideHeartWarning, 1.8);
+  }
+
+  private hideHeartWarning(): void {
+    if (this.heartWarningNode) {
+      this.heartWarningNode.active = false;
+    }
+  }
+
+  private loadCommonSpriteFrame(assetName: string, onLoaded: (spriteFrame: SpriteFrame) => void): void {
+    const resourcePath = `ui/common/${assetName}/spriteFrame`;
+    resources.load(resourcePath, SpriteFrame, (error, spriteFrame) => {
+      if (error || !spriteFrame) {
+        console.warn(`[StageSelectController] SpriteFrame not found: ${resourcePath}`, error);
+        return;
+      }
+
+      onLoaded(spriteFrame);
+    });
   }
 
   private formatStars(stars: number): string {

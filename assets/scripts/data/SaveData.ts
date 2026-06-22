@@ -1,9 +1,12 @@
-export const CURRENT_SAVE_SCHEMA_VERSION = 1;
+export const CURRENT_SAVE_SCHEMA_VERSION = 2;
 
 export type LanguageCode = 'th' | 'en' | 'zh_TW' | 'zh_CN';
 
 export interface PlayerSaveData {
   coins: number;
+  hearts: number;
+  maxHearts: number;
+  lastHeartRegenAt: number;
 }
 
 export interface SettingsSaveData {
