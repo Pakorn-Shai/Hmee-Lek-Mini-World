@@ -5,6 +5,10 @@ import { SaveManager } from '../core/SaveManager';
 
 const { ccclass } = _decorator;
 
+const ECONOMY_HUD_Y = 1250;
+const HEART_HUD_X = -420;
+const COIN_HUD_X = 420;
+
 @ccclass('StageSelectController')
 export class StageSelectController extends Component {
   private heartLabel?: Label;
@@ -133,12 +137,15 @@ export class StageSelectController extends Component {
     this.coinLabel = this.findNodeByName(this.node, 'CoinLabel')?.getComponent(Label) ?? undefined;
 
     if (!this.heartLabel) {
-      this.heartLabel = this.createEconomyLabel('HeartLabel', -170, 520);
+      this.heartLabel = this.createEconomyLabel('HeartLabel', HEART_HUD_X, ECONOMY_HUD_Y);
     }
 
     if (!this.coinLabel) {
-      this.coinLabel = this.createEconomyLabel('CoinLabel', 170, 520);
+      this.coinLabel = this.createEconomyLabel('CoinLabel', COIN_HUD_X, ECONOMY_HUD_Y);
     }
+
+    this.positionEconomyLabel(this.heartLabel, HEART_HUD_X, ECONOMY_HUD_Y);
+    this.positionEconomyLabel(this.coinLabel, COIN_HUD_X, ECONOMY_HUD_Y);
   }
 
   private refreshEconomyLabels(): void {
@@ -147,7 +154,7 @@ export class StageSelectController extends Component {
       this.heartLabel.string = `x${saveData.player.hearts}`;
     }
     if (this.coinLabel) {
-      this.coinLabel.string = `x${saveData.player.coins}`;
+      this.coinLabel.string = `${saveData.player.coins}`;
     }
   }
 
@@ -176,6 +183,38 @@ export class StageSelectController extends Component {
     label.horizontalAlign = Label.HorizontalAlign.CENTER;
     label.verticalAlign = Label.VerticalAlign.CENTER;
     return label;
+  }
+
+  private positionEconomyLabel(label: Label | undefined, x: number, y: number): void {
+    if (!label) {
+      return;
+    }
+
+    const container = label.node.parent && label.node.parent !== this.node ? label.node.parent : label.node;
+    container.setPosition(x, y);
+    const containerTransform = container.getComponent(UITransform) ?? container.addComponent(UITransform);
+    containerTransform.setContentSize(300, 92);
+
+    const labelTransform = label.node.getComponent(UITransform) ?? label.node.addComponent(UITransform);
+    labelTransform.setContentSize(174, 78);
+    label.fontSize = 38;
+    label.lineHeight = 48;
+    label.horizontalAlign = Label.HorizontalAlign.CENTER;
+    label.verticalAlign = Label.VerticalAlign.CENTER;
+
+    if (container !== label.node) {
+      label.node.setPosition(54, 0);
+      const iconNode = container.getChildByName(`${label.node.name}Icon`);
+      if (iconNode) {
+        iconNode.setPosition(-82, 0);
+        const iconTransform = iconNode.getComponent(UITransform) ?? iconNode.addComponent(UITransform);
+        iconTransform.setContentSize(68, 68);
+      }
+    }
+
+    if (container.parent) {
+      container.setSiblingIndex(Math.max(0, container.parent.children.length - 1));
+    }
   }
 
   private createEconomyIcon(nodeName: string, parent: Node): void {
