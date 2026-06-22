@@ -1,5 +1,13 @@
 import { PearlColor } from '../minigames/bubble_shooter/PearlColorSystem';
 
+export type BubbleStageGoalType =
+  | 'clear_target_count'
+  | 'clear_specific_color'
+  | 'break_obstacles'
+  | 'defeat_boss'
+  | 'survive_turns'
+  | 'reach_score';
+
 export interface BubbleStageConfig {
   stageId: number;
   rowCount: number;
@@ -20,7 +28,7 @@ export interface BubbleStageConfig {
   firstClearBonus?: number;
   availablePowerups?: string[];
   obstacles?: string[];
-  goalType?: string;
+  goalType?: BubbleStageGoalType;
   boardDropEnabled?: boolean;
   shotsPerDrop?: number;
   addNewRowOnDrop?: boolean;
@@ -31,7 +39,7 @@ const DEFAULT_SCORE_PER_PEARL = 100;
 const DEFAULT_FLOATING_BONUS = 150;
 const DEFAULT_REMAINING_SHOT_BONUS = 500;
 const DEFAULT_CLEAR_BONUS = 1000;
-const DEFAULT_GOAL_TYPE = 'clear_target_count';
+const DEFAULT_GOAL_TYPE: BubbleStageGoalType = 'clear_target_count';
 
 function createBubbleStageConfig(config: {
   stageId: number;
@@ -47,7 +55,7 @@ function createBubbleStageConfig(config: {
   firstClearBonus?: number;
   availablePowerups?: string[];
   obstacles?: string[];
-  goalType?: string;
+  goalType?: BubbleStageGoalType;
   boardDropEnabled?: boolean;
   shotsPerDrop?: number;
   addNewRowOnDrop?: boolean;
