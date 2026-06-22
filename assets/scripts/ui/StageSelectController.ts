@@ -9,6 +9,8 @@ const ECONOMY_HUD_Y = 1320;
 const HEART_HUD_X = -430;
 const COIN_HUD_X = 430;
 
+type StageVisualState = 'comingSoon' | 'locked' | 'unlocked' | 'cleared';
+
 @ccclass('StageSelectController')
 export class StageSelectController extends Component {
   private heartLabel?: Label;
@@ -17,13 +19,25 @@ export class StageSelectController extends Component {
   private coinShadowLabel?: Label;
   private heartWarningNode?: Node;
   private heartWarningLabel?: Label;
+  private hasLoaded = false;
+  private unlockedStageSpriteFrame?: SpriteFrame;
+  private lockedStageSpriteFrame?: SpriteFrame;
 
   protected onLoad(): void {
     this.setupEconomyLabels();
-    this.refreshEconomyLabels();
     this.setupHeartWarning();
-    this.bindStageButtons();
     this.bindBackButton();
+    this.cacheStageButtonSpriteFrames();
+    this.hasLoaded = true;
+    this.refreshStageSelectState();
+  }
+
+  protected onEnable(): void {
+    if (!this.hasLoaded) {
+      return;
+    }
+
+    this.refreshStageSelectState();
   }
 
   public openStage1(): void {
@@ -66,6 +80,11 @@ export class StageSelectController extends Component {
     SceneRouter.loadStageSelect();
   }
 
+  private refreshStageSelectState(): void {
+    this.refreshEconomyLabels();
+    this.bindStageButtons();
+  }
+
   private bindStageButtons(): void {
     const progress = SaveManager.regenerateHearts().minigames.bubbleShooter;
 
@@ -79,14 +98,17 @@ export class StageSelectController extends Component {
 
       const button = stageNode.getComponent(Button) ?? stageNode.addComponent(Button);
       const stageConfig = getBubbleStageConfig(stageId);
-      const isUnlocked = stageConfig !== undefined && stageId <= progress.unlockedStage;
-      const stageKey = `${stageId}`;
-      const stars = progress.stars[stageKey] ?? 0;
-      const isCleared = progress.cleared[stageKey] ?? false;
+      const hasStageConfig = stageConfig !== undefined;
+      const stageKey = String(stageId);
+      const stars = this.normalizeStarCount(progress.stars[stageKey] ?? 0);
+      const isCleared = progress.cleared[stageKey] === true;
+      const isUnlocked = hasStageConfig && (stageId <= progress.unlockedStage || isCleared);
+      const visualState = this.getStageVisualState(hasStageConfig, isUnlocked, isCleared);
 
+      stageNode.targetOff(this);
       button.interactable = isUnlocked;
-      stageNode.off(Button.EventType.CLICK, this.openStage1, this);
-      this.updateStageProgressLabel(stageNode, isUnlocked, isCleared, stars, stageConfig !== undefined);
+      this.updateStageProgressLabel(stageNode, visualState, stars);
+      this.updateStageVisualState(stageNode, visualState, stars);
 
       if (isUnlocked) {
         stageNode.on(Button.EventType.CLICK, () => this.openStage(stageId), this);
@@ -97,11 +119,24 @@ export class StageSelectController extends Component {
         unlocked: isUnlocked,
         cleared: isCleared,
         stars,
+        unlockedStage: progress.unlockedStage,
       });
     }
   }
 
-  private updateStageProgressLabel(stageNode: Node, isUnlocked: boolean, isCleared: boolean, stars: number, hasStageConfig: boolean): void {
+  private getStageVisualState(hasStageConfig: boolean, isUnlocked: boolean, isCleared: boolean): StageVisualState {
+    if (!hasStageConfig) {
+      return 'comingSoon';
+    }
+
+    if (!isUnlocked) {
+      return 'locked';
+    }
+
+    return isCleared ? 'cleared' : 'unlocked';
+  }
+
+  private updateStageProgressLabel(stageNode: Node, visualState: StageVisualState, stars: number): void {
     let labelNode = stageNode.getChildByName('ProgressLabel');
     if (!labelNode) {
       labelNode = new Node('ProgressLabel');
@@ -118,20 +153,132 @@ export class StageSelectController extends Component {
     label.horizontalAlign = Label.HorizontalAlign.CENTER;
     label.verticalAlign = Label.VerticalAlign.CENTER;
 
-    if (!hasStageConfig) {
+    if (visualState === 'comingSoon') {
       label.string = 'เร็ว ๆ นี้';
       label.color = new Color(255, 255, 255, 150);
       return;
     }
 
-    if (!isUnlocked) {
+    if (visualState === 'locked') {
       label.string = 'ล็อก';
       label.color = new Color(255, 255, 255, 165);
       return;
     }
 
-    label.string = isCleared ? `${this.formatStars(stars)} ผ่านแล้ว` : this.formatStars(stars);
-    label.color = isCleared ? new Color(255, 241, 120, 255) : new Color(255, 255, 255, 210);
+    label.string = visualState === 'cleared' ? `${this.formatStars(stars)} ผ่านแล้ว` : 'เปิดแล้ว';
+    label.color = visualState === 'cleared' ? new Color(255, 241, 120, 255) : new Color(255, 255, 255, 210);
+  }
+
+  private updateStageVisualState(stageNode: Node, visualState: StageVisualState, stars: number): void {
+    const isLocked = visualState === 'locked' || visualState === 'comingSoon';
+    const isCleared = visualState === 'cleared';
+
+    this.updateStageSpriteFrame(stageNode, visualState);
+    this.setNamedVisualsActive(stageNode, ['LockIcon', 'LockedIcon', 'Lock', 'LockNode', 'LockLabel'], isLocked);
+    this.setNamedVisualsActive(stageNode, ['ClearedIcon', 'ClearedBadge', 'ClearedLabel', 'ClearIcon'], isCleared);
+    this.updateStageMainLabel(stageNode, visualState);
+    this.updateStageStarNodes(stageNode, isCleared, stars);
+    this.updateStageSpriteColor(stageNode, visualState);
+  }
+
+  private cacheStageButtonSpriteFrames(): void {
+    const unlockedStageNode = this.findNodeByName(this.node, 'Stage01');
+    const lockedStageNode = this.findNodeByName(this.node, 'Stage02');
+
+    this.unlockedStageSpriteFrame = unlockedStageNode?.getComponent(Sprite)?.spriteFrame ?? undefined;
+    this.lockedStageSpriteFrame = lockedStageNode?.getComponent(Sprite)?.spriteFrame ?? undefined;
+
+    if (!this.unlockedStageSpriteFrame) {
+      console.warn('[StageSelectController] Unlocked stage sprite frame not found.');
+    }
+
+    if (!this.lockedStageSpriteFrame) {
+      console.warn('[StageSelectController] Locked stage sprite frame not found.');
+    }
+  }
+
+  private updateStageSpriteFrame(stageNode: Node, visualState: StageVisualState): void {
+    const sprite = stageNode.getComponent(Sprite);
+    if (!sprite) {
+      return;
+    }
+
+    const nextSpriteFrame =
+      visualState === 'locked' || visualState === 'comingSoon'
+        ? this.lockedStageSpriteFrame
+        : this.unlockedStageSpriteFrame;
+
+    if (nextSpriteFrame) {
+      sprite.spriteFrame = nextSpriteFrame;
+    }
+  }
+
+  private updateStageMainLabel(stageNode: Node, visualState: StageVisualState): void {
+    const label = stageNode.getChildByName('Label')?.getComponent(Label);
+    if (!label) {
+      return;
+    }
+
+    if (visualState === 'locked' || visualState === 'comingSoon') {
+      label.color = new Color(255, 255, 255, 150);
+      return;
+    }
+
+    label.color = visualState === 'cleared' ? new Color(255, 241, 120, 255) : new Color(255, 255, 255, 255);
+  }
+
+  private updateStageStarNodes(stageNode: Node, isCleared: boolean, stars: number): void {
+    for (let index = 1; index <= 3; index += 1) {
+      const starNode = this.findFirstExistingNode(stageNode, [`Star${index}`, `Star0${index}`]);
+      if (!starNode) {
+        continue;
+      }
+
+      starNode.active = isCleared;
+      const starLabel = starNode.getComponent(Label) ?? starNode.getChildByName('Label')?.getComponent(Label);
+      if (starLabel) {
+        starLabel.string = index <= stars ? '★' : '☆';
+        starLabel.color = index <= stars ? new Color(255, 241, 120, 255) : new Color(255, 255, 255, 150);
+      }
+    }
+  }
+
+  private updateStageSpriteColor(stageNode: Node, visualState: StageVisualState): void {
+    const sprite = stageNode.getComponent(Sprite);
+    if (!sprite) {
+      return;
+    }
+
+    if (visualState === 'locked' || visualState === 'comingSoon') {
+      sprite.color = new Color(130, 142, 156, 210);
+      return;
+    }
+
+    sprite.color = visualState === 'cleared' ? new Color(255, 246, 186, 255) : new Color(255, 255, 255, 255);
+  }
+
+  private setNamedVisualsActive(root: Node, nodeNames: string[], isActive: boolean): void {
+    for (const nodeName of nodeNames) {
+      const visualNode = this.findNodeByName(root, nodeName);
+      if (visualNode && visualNode !== root) {
+        visualNode.active = isActive;
+      }
+    }
+  }
+
+  private findFirstExistingNode(root: Node, nodeNames: string[]): Node | null {
+    for (const nodeName of nodeNames) {
+      const foundNode = this.findNodeByName(root, nodeName);
+      if (foundNode) {
+        return foundNode;
+      }
+    }
+
+    return null;
+  }
+
+  private normalizeStarCount(stars: number): number {
+    return Math.max(0, Math.min(Math.floor(stars), 3));
   }
 
   private setupEconomyLabels(): void {

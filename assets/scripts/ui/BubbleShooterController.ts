@@ -143,8 +143,8 @@ export class BubbleShooterController extends Component {
   private ballsLeft = 0;
   private lastResultCoinReward = 0;
 
-  private get currentStageConfig() {
-    return getBubbleStageConfig(BubbleStageSelection.selectedStage) ?? getBubbleStageConfig(1);
+  private get currentStageConfig(): BubbleStageConfig | undefined {
+    return getBubbleStageConfig(BubbleStageSelection.selectedStage);
   }
 
   protected onLoad(): void {
@@ -242,21 +242,34 @@ export class BubbleShooterController extends Component {
   }
 
   private getResolvedStageConfig(): BubbleStageConfig {
-    return this.currentStageConfig ?? {
+    const selectedStageConfig = this.currentStageConfig;
+    if (selectedStageConfig) {
+      return selectedStageConfig;
+    }
+
+    console.warn('[BubbleShooter] Missing stage config. Falling back to Stage 1.', {
+      selectedStage: BubbleStageSelection.selectedStage,
+    });
+    BubbleStageSelection.selectedStage = 1;
+
+    return getBubbleStageConfig(1) ?? {
       stageId: 1,
-      rowCount: 4,
+      rowCount: 3,
       columnCount: 6,
       allowedColors: [PearlColor.Blue, PearlColor.Pink, PearlColor.Green],
-      clearTarget: 12,
-      moveLimit: 25,
+      clearTarget: 10,
+      moveLimit: 28,
       scorePerPearl: 100,
       floatingBonus: 150,
       remainingShotBonus: 500,
       clearBonus: 1000,
-      starScoreThresholds: [1500, 3000, 5000],
-      targetPearls: 12,
-      maxShots: 25,
+      starScoreThresholds: [1200, 2600, 5000],
+      targetPearls: 10,
+      maxShots: 28,
       unlocked: true,
+      difficulty: 1,
+      coinReward: 20,
+      firstClearBonus: 30,
     };
   }
 
@@ -1124,7 +1137,13 @@ export class BubbleShooterController extends Component {
 
   private openNextStage(): void {
     const nextStageId = this.getResolvedStageConfig().stageId + 1;
-    if (!getBubbleStageConfig(nextStageId)) {
+    if (!this.canOpenNextStage()) {
+      console.warn('[BubbleShooter] Next stage blocked: locked or missing config.', {
+        nextStageId,
+        unlockedStage: SaveManager.getData().minigames.bubbleShooter.unlockedStage,
+        hasStageConfig: getBubbleStageConfig(nextStageId) !== undefined,
+      });
+      director.loadScene('StageSelect');
       return;
     }
 
@@ -1138,8 +1157,10 @@ export class BubbleShooterController extends Component {
     director.loadScene('BubbleShooter');
   }
 
-  private hasNextStage(): boolean {
-    return getBubbleStageConfig(this.getResolvedStageConfig().stageId + 1) !== undefined;
+  private canOpenNextStage(): boolean {
+    const nextStageId = this.getResolvedStageConfig().stageId + 1;
+    const progress = SaveManager.getData().minigames.bubbleShooter;
+    return getBubbleStageConfig(nextStageId) !== undefined && nextStageId <= progress.unlockedStage;
   }
 
   private refreshStageHud(): void {
@@ -1439,8 +1460,8 @@ export class BubbleShooterController extends Component {
     }
 
     if (this.resultNextButton) {
-      const canOpenNextStage = finalState === BubbleShooterGameState.Win && this.hasNextStage();
-      this.resultNextButton.active = true;
+      const canOpenNextStage = finalState === BubbleShooterGameState.Win && this.canOpenNextStage();
+      this.resultNextButton.active = canOpenNextStage;
       const nextButtonComponent = this.resultNextButton.getComponent(Button);
       if (nextButtonComponent) {
         nextButtonComponent.interactable = canOpenNextStage;
